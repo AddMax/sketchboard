@@ -18,6 +18,13 @@ init: ## Первый запуск: .env, сборка образов, стар�
 		case "$$MTU" in ''|*[!0-9]*) MTU=1420 ;; esac; \
 		sed -i "s/^DOCKER_MTU=.*/DOCKER_MTU=$$MTU/" .env; \
 		echo "MTU сети Docker: $$MTU"
+	@# Секреты Centrifugo должны быть уникальными на каждой машине
+	@grep -q '^CENTRIFUGO_API_KEY=замените' .env && \
+		sed -i "s|^CENTRIFUGO_API_KEY=.*|CENTRIFUGO_API_KEY=$$(openssl rand -base64 36 | tr '+/' '-_' | tr -d '=')|" .env && \
+		echo "сгенерирован CENTRIFUGO_API_KEY" || true
+	@grep -q '^CENTRIFUGO_TOKEN_SECRET=замените' .env && \
+		sed -i "s|^CENTRIFUGO_TOKEN_SECRET=.*|CENTRIFUGO_TOKEN_SECRET=$$(openssl rand -base64 36 | tr '+/' '-_' | tr -d '=')|" .env && \
+		echo "сгенерирован CENTRIFUGO_TOKEN_SECRET" || true
 	$(DC) build
 	$(DC) up -d
 	@echo "Приложение: http://localhost:$$(grep ^HTTP_PORT .env | cut -d= -f2)"

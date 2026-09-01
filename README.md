@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | Прокси | nginx | `nginx:1-alpine` |
 | API | PHP 8.5 + Symfony 8.1 (php-fpm) | `php:8.5-fpm-alpine` |
-| Realtime | WebSocket-сервер на amphp | тот же образ, другая точка входа |
+| Realtime | Centrifugo 6 — WebSocket-сервер | `centrifugo/centrifugo:v6.9` (alpine) |
 | БД | PostgreSQL 18 | `postgres:18-alpine` |
 | Кэш и шина событий | Redis 8 | `redis:8-alpine` |
 | Фронтенд | React 19 + Vite (dev-server с HMR) | `node:24-alpine` |
@@ -18,7 +18,7 @@
 
 ```
              ┌──────────────── браузер ────────────────┐
-             │  React (Vite)                           │
+             │  React (Vite) + centrifuge-js           │
              └───┬──────────────────────────┬──────────┘
        HTTP /api │                          │ WS /ws
              ┌───▼──────────────────────────▼──────────┐
@@ -26,27 +26,38 @@
              └───┬──────────────┬───────────┬──────────┘
         fastcgi  │              │ proxy     │ proxy
              ┌───▼────┐   ┌─────▼──────┐  ┌─▼───────────┐
-             │php-fpm │   │ websocket  │  │ vite:5173   │
-             │Symfony │   │  amphp     │  │ (dev + HMR) │
-             └─┬────┬─┘   └─────▲──────┘  └─────────────┘
-     Doctrine  │    │ publish   │ subscribe
-          ┌────▼─┐  │     ┌─────┴──────┐
-          │  PG  │  └────►│   Redis    │
-          └──────┘        └────────────┘
+             │php-fpm │   │ Centrifugo │  │ vite:5173   │
+             │Symfony │──►│   :8000    │  │ (dev + HMR) │
+             └─┬──────┘ HTTP API       │  └─────────────┘
+     Doctrine  │           └─────┬─────┘
+          ┌────▼─┐               │ presence, история, подписки
+          │  PG  │         ┌─────▼──────┐
+          └──────┘         │   Redis    │◄── кэш Symfony
+                           └────────────┘
 ```
 
 Ключевая деталь: php-fpm живёт ровно один запрос и не может держать открытые
-WebSocket-соединения. Поэтому соединения держит отдельный контейнер
-`websocket`, а обмен между ним и API идёт через Redis Pub/Sub:
+WebSocket-соединения. Их держит Centrifugo, а бэкенд обращается к нему по
+серверному HTTP API:
 
 1. React отправляет `POST /api/notes` → nginx → php-fpm.
-2. Symfony пишет заметку в PostgreSQL и публикует событие в канал Redis
-   (`App\Realtime\RealtimePublisher`).
-3. WebSocket-сервер подписан на этот канал и рассылает событие всем
-   подключённым браузерам.
+2. Symfony пишет заметку в PostgreSQL и публикует доменное событие в канал
+   Centrifugo (`CentrifugoEventPublisher`).
+3. Centrifugo рассылает событие всем браузерам, подписанным на канал.
 4. React обновляет доску — у всех одновременно.
 
-Эфемерные события (курсор, `ping`) ходят напрямую через WebSocket, минуя БД.
+Подключение защищено JWT: браузер сначала просит `GET /api/realtime/access`,
+бэкенд подписывает короткоживущий токен общим с Centrifugo секретом. Сам
+секрет и ключ HTTP API из контейнера php не выходят.
+
+Эфемерные события (курсор, `ping`) клиент публикует в канал напрямую, минуя
+бэкенд и базу. Своя же публикация возвращается автору — адаптер отбрасывает
+её по `info.client`, который Centrifugo проставляет клиентским сообщениям
+и не проставляет серверным.
+
+Что теперь делает Centrifugo вместо своего кода: держит соединения и
+переподключения, считает присутствие (`presence`), хранит короткую историю
+канала и догоняет пропущенное после обрыва, проверяет токены.
 
 ## Запуск
 
@@ -99,7 +110,8 @@ ip link show $(ip route get 1.1.1.1 | awk '{print $5; exit}')   # смотрит
 | POST | `/api/notes` | создать заметку |
 | PATCH | `/api/notes/{id}/position` | переместить заметку |
 | DELETE | `/api/notes/{id}` | удалить заметку |
-| GET | `/ws` | WebSocket-канал realtime-событий |
+| GET | `/api/realtime/access` | токен подключения и имя канала |
+| GET | `/ws` | WebSocket Centrifugo (проксируется в `/connection/websocket`) |
 
 ## Частые команды
 
@@ -150,14 +162,15 @@ backend/src/
     Note/Query/ListNotes/
     Note/ReadModel/NoteView.php
     Shared/Port/DomainEventPublisher.php
+    Shared/Port/RealtimeAccess.php
+    Realtime/Query/IssueRealtimeAccess/
   Infrastructure/             адаптеры портов
     Persistence/Doctrine/     репозиторий, DBAL-типы, XML-маппинг
-    Realtime/                 публикация событий в Redis + сериализация
-    WebSocket/                обработчик WS-соединений
+    Realtime/                 сериализация событий для клиентов
+    Realtime/Centrifugo/      HTTP API, публикация событий, выдача JWT
   UI/
     Http/Controller/          тонкие контроллеры
     Http/EventListener/       доменные исключения → коды HTTP
-    Console/                  app:websocket:serve
 ```
 
 Инварианты стерегут объекты-значения, а не аннотации валидатора: пустой
@@ -183,7 +196,8 @@ frontend/src/
     board/BoardDependencies.tsx   проброс адаптеров через контекст
   infrastructure/
     http/HttpNoteRepository.ts        адаптер REST
-    realtime/WebSocketRealtimeChannel.ts  адаптер WS с переподключением
+    http/HttpRealtimeAccessProvider.ts   получение токена подключения
+    realtime/CentrifugoRealtimeChannel.ts адаптер поверх centrifuge-js
     container.ts              композиционный корень
   ui/                         компоненты, не знающие о транспорте
 ```
@@ -191,6 +205,11 @@ frontend/src/
 Компоненты получают адаптеры через контекст, поэтому в тестах на место
 `NoteRepository` встаёт объект в памяти, а логика доски проверяется без
 React и сети.
+
+Переход с самописного WebSocket-сервера на Centrifugo это наглядно
+подтвердил: поменялись только адаптеры по обе стороны — порты
+`DomainEventPublisher` и `RealtimeChannel`, сценарии и оба домена остались
+дословно теми же, и все 32 теста домена прошли без правок.
 
 ### Тесты
 
@@ -209,8 +228,10 @@ make test          # домен бэкенда и фронтенда
   "postgres":"ok","redis":"ok"}`;
 - `POST /api/notes` пишет в PostgreSQL, и событие `note.created` приходит
   в браузер по WebSocket; то же для `note.moved` и `note.deleted`;
-- эфемерное событие (`cursor`) от одного клиента доходит до другого,
-  минуя БД; подключение и отключение меняют `presence`;
+- эфемерное событие (`cursor`) от одного клиента доходит до другого, минуя
+  бэкенд; `presence` Centrifugo показал 2 клиентов и 1 после отключения;
+- собственная публикация приходит с `info.client`, серверная — без него,
+  поэтому адаптер отбрасывает ровно своё эхо;
 - доменные правила отвечают через все слои: пустой текст и цвет не в формате
   `#rrggbb` → 422 с указанием поля, координата вне доски → 422, отсутствующая
   заметка → 404; перемещение «на то же место» события не порождает;
@@ -225,4 +246,11 @@ make test          # домен бэкенда и фронтенда
   `vite build` и раздача статики nginx'ом напрямую.
 - В `php.ini` включён `display_errors` и `opcache.validate_timestamps` —
   для продакшена оба надо выключить.
-- WebSocket-канал не аутентифицирован: подключиться может кто угодно.
+- Подключение к каналу защищено JWT, но самого пользователя ещё нет: имя
+  участника приходит от клиента и ничем не подтверждается. Реальная
+  авторизация появится в `IssueRealtimeAccessHandler`.
+- `CENTRIFUGO_API_KEY` и `CENTRIFUGO_TOKEN_SECRET` в `.env` сгенерированы
+  локально; в бою их выдаёт хранилище секретов.
+- Публиковать в канал разрешено любому подписчику (`allow_publish_for_subscriber`) —
+  это нужно для курсоров. Если клиентские публикации не потребуются,
+  опцию стоит выключить.

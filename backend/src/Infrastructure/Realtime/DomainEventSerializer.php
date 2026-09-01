@@ -18,13 +18,16 @@ use App\Domain\Shared\DomainEvent;
  */
 final readonly class DomainEventSerializer
 {
-    public function toJson(DomainEvent $event): string
+    /**
+     * @return array{event: string, payload: array<string, mixed>, at: string}
+     */
+    public function toArray(DomainEvent $event): array
     {
-        return json_encode([
+        return [
             'event' => $event->eventName(),
             'payload' => $this->payload($event),
             'at' => $event->occurredAt()->format(\DateTimeInterface::ATOM),
-        ], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE);
+        ];
     }
 
     /**

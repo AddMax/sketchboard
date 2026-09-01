@@ -1,0 +1,48 @@
+# Конфигурация Centrifugo. Секреты сюда не попадают: они приходят
+# переменными окружения CENTRIFUGO_* из .env
+
+http_server:
+  address: "0.0.0.0"
+  port: 8000
+
+# Список источников задаётся переменной CENTRIFUGO_CLIENT_ALLOWED_ORIGINS:
+# он зависит от адреса, по которому открыто приложение, и потому живёт в .env
+
+# Presence, история и подписки хранятся в Redis — том же, что и кэш
+# Symfony. Так Centrifugo можно запустить в нескольких экземплярах,
+# не теряя состояния.
+engine:
+  type: redis
+  redis:
+    address:
+      - "redis://redis:6379"
+    prefix: "sketchboard.centrifugo"
+
+channel:
+  namespaces:
+    # Канал доски: board:<идентификатор доски>
+    - name: board
+
+      # Кто участвует прямо сейчас — это Centrifugo умеет сам,
+      # считать подключения вручную больше не нужно
+      presence: true
+      join_leave: true
+      force_push_join_leave: true
+
+      # Подписаться может любой аутентифицированный клиент,
+      # публиковать — только уже подписанный
+      allow_subscribe_for_client: true
+      allow_publish_for_subscriber: true
+      allow_presence_for_subscriber: true
+
+      # Короткая история: при обрыве связи клиент догоняет пропущенное
+      # вместо полной перезагрузки доски
+      history_size: 100
+      history_ttl: "60s"
+      allow_recovery: true
+
+health:
+  enabled: true
+
+log:
+  level: info
