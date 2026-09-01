@@ -1,0 +1,37 @@
+parameters:
+    app.realtime_channel: '%env(REALTIME_CHANNEL)%'
+    app.redis_url: '%env(REDIS_URL)%'
+
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        bind:
+            string $realtimeChannel: '%app.realtime_channel%'
+            string $redisUrl: '%app.redis_url%'
+
+    # Домен — это модель, а не набор сервисов: в контейнер он не попадает.
+    # Регистрируем только слои, которые что-то делают.
+    App\Application\:
+        resource: '../src/Application/'
+
+    App\Infrastructure\:
+        resource: '../src/Infrastructure/'
+
+    App\UI\:
+        resource: '../src/UI/'
+
+    # Порты домена и приложения → их единственные реализации
+    App\Domain\Note\NoteRepository: '@App\Infrastructure\Persistence\Doctrine\DoctrineNoteRepository'
+    App\Application\Shared\Port\DomainEventPublisher: '@App\Infrastructure\Realtime\RedisDomainEventPublisher'
+
+    # Контроллеры не наследуют AbstractController, поэтому помечаем их явно
+    App\UI\Http\Controller\:
+        resource: '../src/UI/Http/Controller/'
+        tags: ['controller.service_arguments']
+
+    Redis:
+        class: Redis
+        factory: ['Symfony\Component\Cache\Adapter\RedisAdapter', 'createConnection']
+        arguments:
+            $dsn: '%app.redis_url%'

@@ -1,0 +1,16 @@
+.env
+.idea/
+.vscode/
+
+backend/vendor/
+backend/var/
+backend/.env.local
+# Автогенерируется Symfony при прогреве кэша (подсказки для config/*.php)
+backend/config/reference.php
+backend/.phpunit.result.cache
+
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+*.log

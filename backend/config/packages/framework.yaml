@@ -1,0 +1,18 @@
+framework:
+    secret: '%env(APP_SECRET)%'
+
+    # API stateless: сессии не нужны
+    session: false
+
+    php_errors:
+        log: true
+
+    # Кэш приложения и системный кэш метаданных — в Redis
+    cache:
+        app: cache.adapter.redis
+        default_redis_provider: '%env(REDIS_URL)%'
+
+when@dev:
+    framework:
+        router:
+            strict_requirements: true

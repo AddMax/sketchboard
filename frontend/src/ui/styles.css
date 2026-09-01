@@ -1,0 +1,158 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f5f6f8;
+  --fg: #1b1d22;
+  --panel: #ffffff;
+  --border: #d8dbe2;
+  --muted: #6b7280;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --fg: #e8eaee;
+    --panel: #1d2026;
+    --border: #2e333c;
+    --muted: #9aa1ac;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.dot--online { background: #06d6a0; }
+.dot--connecting { background: #ffd166; }
+.dot--offline { background: #ef476f; }
+
+.badge {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.composer {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.composer input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+}
+
+button {
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #ef476f22;
+  color: #ef476f;
+  font-size: 13px;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.empty {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
+.note {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 130px;
+  padding: 14px;
+  border-radius: 10px;
+  color: #1b1d22;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.note__text {
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+
+.note__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.note__meta button {
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  color: inherit;
+}
