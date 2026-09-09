@@ -1,15 +1,21 @@
 import type { BoardDependencies } from '../application/board/BoardDependencies'
-import { config } from './config'
+import { config, websocketUrl } from './config'
 import { HttpNoteRepository } from './http/HttpNoteRepository'
-import { WebSocketRealtimeChannel } from './realtime/WebSocketRealtimeChannel'
+import { HttpRealtimeAccessProvider } from './http/HttpRealtimeAccessProvider'
+import { CentrifugoRealtimeChannel } from './realtime/CentrifugoRealtimeChannel'
 
 /**
  * Композиционный корень: единственное место, где выбираются конкретные
- * реализации портов. Всё остальное приложение видит только интерфейсы.
+ * реализации портов. Замена самописного WebSocket-сервера на Centrifugo
+ * затронула только эту строку и сам адаптер.
  */
-export function createDependencies(): BoardDependencies {
+export function createDependencies(participant: string): BoardDependencies {
   return {
     notes: new HttpNoteRepository(config.apiBase),
-    realtime: new WebSocketRealtimeChannel(config.wsPath),
+    realtime: new CentrifugoRealtimeChannel(
+      websocketUrl(),
+      new HttpRealtimeAccessProvider(config.apiBase),
+      participant,
+    ),
   }
 }

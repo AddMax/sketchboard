@@ -1,6 +1,10 @@
 parameters:
     app.realtime_channel: '%env(REALTIME_CHANNEL)%'
     app.redis_url: '%env(REDIS_URL)%'
+    app.centrifugo_api_url: '%env(CENTRIFUGO_API_URL)%'
+    app.centrifugo_api_key: '%env(CENTRIFUGO_API_KEY)%'
+    app.centrifugo_token_secret: '%env(CENTRIFUGO_TOKEN_SECRET)%'
+    app.centrifugo_token_ttl: '%env(int:CENTRIFUGO_TOKEN_TTL)%'
 
 services:
     _defaults:
@@ -9,11 +13,21 @@ services:
         bind:
             string $realtimeChannel: '%app.realtime_channel%'
             string $redisUrl: '%app.redis_url%'
+            string $centrifugoApiUrl: '%app.centrifugo_api_url%'
+            string $centrifugoApiKey: '%app.centrifugo_api_key%'
+            string $centrifugoTokenSecret: '%app.centrifugo_token_secret%'
+            int $centrifugoTokenTtl: '%app.centrifugo_token_ttl%'
 
     # Домен — это модель, а не набор сервисов: в контейнер он не попадает.
     # Регистрируем только слои, которые что-то делают.
     App\Application\:
         resource: '../src/Application/'
+        exclude:
+            # DTO и read-модели создаются кодом, а не контейнером
+            - '../src/Application/**/ReadModel/'
+            - '../src/Application/**/Command/**/*Command.php'
+            - '../src/Application/**/Query/**/*Query.php'
+            - '../src/Application/Shared/Port/RealtimeCredentials.php'
 
     App\Infrastructure\:
         resource: '../src/Infrastructure/'
@@ -23,7 +37,8 @@ services:
 
     # Порты домена и приложения → их единственные реализации
     App\Domain\Note\NoteRepository: '@App\Infrastructure\Persistence\Doctrine\DoctrineNoteRepository'
-    App\Application\Shared\Port\DomainEventPublisher: '@App\Infrastructure\Realtime\RedisDomainEventPublisher'
+    App\Application\Shared\Port\DomainEventPublisher: '@App\Infrastructure\Realtime\Centrifugo\CentrifugoEventPublisher'
+    App\Application\Shared\Port\RealtimeAccess: '@App\Infrastructure\Realtime\Centrifugo\CentrifugoRealtimeAccess'
 
     # Контроллеры не наследуют AbstractController, поэтому помечаем их явно
     App\UI\Http\Controller\:

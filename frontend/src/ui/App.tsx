@@ -1,15 +1,12 @@
-import { useState } from 'react'
 import { useBoard } from '../application/board/useBoard'
 import { BoardView } from './components/BoardView'
 import { Composer } from './components/Composer'
 import { ConnectionStatus } from './components/ConnectionStatus'
-import { currentAuthor } from './identity'
 
 const COLORS = ['#ffd166', '#06d6a0', '#118ab2', '#ef476f', '#c8b6ff']
 
-export function App() {
+export function App({ author }: { author: string }) {
   const { board, connection, clients, error, addNote, removeNote, ping, dismissError } = useBoard()
-  const [author] = useState(currentAuthor)
 
   return (
     <div className="app">
