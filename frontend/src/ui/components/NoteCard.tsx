@@ -6,7 +6,12 @@ export function NoteCard({ note, onRemove }: { note: Note; onRemove: (id: string
       <p className="note__text">{note.text}</p>
       <footer className="note__meta">
         <span>{note.author}</span>
-        <button type="button" onClick={() => onRemove(note.id)} aria-label="Удалить заметку">
+        <button
+          className="note__remove"
+          type="button"
+          onClick={() => onRemove(note.id)}
+          aria-label="Удалить заметку"
+        >
           ×
         </button>
       </footer>

@@ -1,0 +1,40 @@
+@use '../tokens' as t;
+@use '../mixins' as m;
+
+.app {
+  min-height: 100vh;
+}
+
+.topbar {
+  @include m.surface;
+
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+
+  &__title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+}
+
+.content {
+  max-width: t.$content-max-width;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.error {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: t.$radius-control;
+  background: rgb(209 52 91 / 12%);
+  color: var(--color-danger);
+  font-size: t.$font-size-small;
+  cursor: pointer;
+}

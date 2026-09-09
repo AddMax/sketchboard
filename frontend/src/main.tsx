@@ -4,7 +4,7 @@ import { BoardDependenciesProvider } from './application/board/BoardDependencies
 import { createDependencies } from './infrastructure/container'
 import { App } from './ui/App'
 import { currentAuthor } from './ui/identity'
-import './ui/styles.css'
+import './ui/styles/index.scss'
 
 const container = document.getElementById('root')
 

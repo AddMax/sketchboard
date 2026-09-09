@@ -1,0 +1,39 @@
+@use '../tokens' as t;
+
+.note {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: t.$note-min-height;
+  padding: t.$gap;
+  border-radius: t.$radius-note;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 12%);
+  color: t.$note-ink;
+
+  &__text {
+    margin: 0 0 12px;
+    overflow-wrap: anywhere;
+  }
+
+  &__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    opacity: 0.75;
+  }
+
+  &__remove {
+    padding: 0 8px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 18px;
+    line-height: 1;
+    transition: opacity 0.15s ease;
+
+    &:hover {
+      opacity: 0.65;
+    }
+  }
+}

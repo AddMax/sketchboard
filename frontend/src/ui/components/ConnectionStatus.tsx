@@ -19,11 +19,13 @@ export function ConnectionStatus({
 }) {
   return (
     <div className="status">
-      <span className={`dot dot--${state}`} />
+      <span className={`status__dot status__dot--${state}`} />
       <span>{LABELS[state]}</span>
-      {clients > 0 && <span className="badge">клиентов: {clients}</span>}
-      <span className="badge">вы: {author}</span>
-      <button type="button" onClick={onPing} disabled={state !== 'online'}>
+
+      {clients > 0 && <span className="status__badge">клиентов: {clients}</span>}
+      <span className="status__badge">вы: {author}</span>
+
+      <button type="button" className="status__ping" onClick={onPing} disabled={state !== 'online'}>
         ping
       </button>
     </div>

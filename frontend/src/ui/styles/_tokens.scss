@@ -1,0 +1,42 @@
+// Единственный источник значений: размеры и радиусы — переменными Sass,
+// цвета — переменными CSS, потому что их подменяет тёмная схема.
+
+$board-min-column: 220px;
+$content-max-width: 1100px;
+$note-min-height: 130px;
+
+$radius-control: 8px;
+$radius-note: 10px;
+
+$gap-tight: 8px;
+$gap: 14px;
+
+$font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+$font-size-small: 13px;
+
+$hairline: rgb(128 128 128 / 25%);
+// Стикер всегда цветной, поэтому текст на нём тёмный в любой теме
+$note-ink: rgb(27 29 34 / 88%);
+
+$sticker-lemon: #ffd166;
+$sticker-mint: #06d6a0;
+$sticker-sky: #118ab2;
+$sticker-rose: #ef476f;
+$sticker-lilac: #c8b6ff;
+
+:root {
+  --color-accent: #{$sticker-sky};
+  --color-canvas: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-ink: #1b1d22;
+  --color-danger: #d1345b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #14161a;
+    --color-surface: #1d2026;
+    --color-ink: #e8eaee;
+    --color-danger: #ff8098;
+  }
+}

@@ -1,0 +1,34 @@
+@use '../tokens' as t;
+@use '../mixins' as m;
+
+.composer {
+  display: flex;
+  gap: t.$gap-tight;
+  margin-bottom: 16px;
+
+  &__field {
+    @include m.control;
+
+    flex: 1;
+    padding: 10px 12px;
+
+    &:focus {
+      outline: none;
+      border-color: var(--color-accent);
+    }
+  }
+
+  &__submit {
+    @include m.control;
+    @include m.disabled;
+
+    border-color: transparent;
+    background: var(--color-accent);
+    color: #fff;
+    font-weight: 500;
+
+    &:hover:not(:disabled) {
+      filter: brightness(1.1);
+    }
+  }
+}
