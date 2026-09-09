@@ -1,0 +1,29 @@
+@use 'tokens' as t;
+
+/// Панель поверх полотна: шапка страницы и подобные ей блоки.
+@mixin surface {
+  background: var(--color-surface);
+  border-bottom: 1px solid t.$hairline;
+}
+
+/// Общая часть интерактивных элементов: кнопок, полей ввода.
+@mixin control {
+  padding: 9px 16px;
+  border: 1px solid t.$hairline;
+  border-radius: t.$radius-control;
+  background: var(--color-surface);
+  color: inherit;
+  font: inherit;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+/// Состояние недоступности — одинаковое у всех элементов управления.
+@mixin disabled {
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

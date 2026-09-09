@@ -1,0 +1,8 @@
+// Точка входа стилей. Порядок важен: базовые правила идут до блоков,
+// чтобы их можно было переопределить без повышения специфичности.
+@use 'base';
+@use 'blocks/layout';
+@use 'blocks/status';
+@use 'blocks/composer';
+@use 'blocks/board';
+@use 'blocks/note';

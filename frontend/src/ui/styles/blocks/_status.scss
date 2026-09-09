@@ -1,0 +1,40 @@
+@use '../tokens' as t;
+@use '../mixins' as m;
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  font-size: t.$font-size-small;
+  opacity: 0.7;
+
+  &__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+
+    // Цвет индикатора — единственное, что зависит от состояния связи
+    &--online { background: t.$sticker-mint; }
+    &--connecting { background: t.$sticker-lemon; }
+    &--offline { background: t.$sticker-rose; }
+  }
+
+  &__badge {
+    padding: 2px 8px;
+    border: 1px solid t.$hairline;
+    border-radius: 999px;
+  }
+
+  &__ping {
+    @include m.control;
+    @include m.disabled;
+
+    padding: 6px 12px;
+
+    &:hover:not(:disabled) {
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+    }
+  }
+}

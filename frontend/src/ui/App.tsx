@@ -11,7 +11,7 @@ export function App({ author }: { author: string }) {
   return (
     <div className="app">
       <header className="topbar">
-        <h1>Sketchboard</h1>
+        <h1 className="topbar__title">Sketchboard</h1>
         <ConnectionStatus
           state={connection}
           clients={clients}
@@ -20,19 +20,21 @@ export function App({ author }: { author: string }) {
         />
       </header>
 
-      <Composer
-        onSubmit={(text) =>
-          addNote({ text, author, color: COLORS[Math.floor(Math.random() * COLORS.length)] })
-        }
-      />
+      <main className="content">
+        <Composer
+          onSubmit={(text) =>
+            addNote({ text, author, color: COLORS[Math.floor(Math.random() * COLORS.length)] })
+          }
+        />
 
-      {error !== null && (
-        <p className="error" onClick={dismissError} role="alert">
-          {error}
-        </p>
-      )}
+        {error !== null && (
+          <p className="error" onClick={dismissError} role="alert">
+            {error}
+          </p>
+        )}
 
-      <BoardView board={board} onRemove={removeNote} />
+        <BoardView board={board} onRemove={removeNote} />
+      </main>
     </div>
   )
 }

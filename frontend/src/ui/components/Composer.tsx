@@ -21,12 +21,13 @@ export function Composer({ onSubmit }: { onSubmit: (text: string) => Promise<voi
   return (
     <form className="composer" onSubmit={submit}>
       <input
+        className="composer__field"
         value={text}
         onChange={(event) => setText(event.target.value)}
         placeholder="Текст заметки — появится у всех сразу"
         maxLength={NOTE_TEXT_MAX_LENGTH}
       />
-      <button type="submit" disabled={busy || text.trim() === ''}>
+      <button className="composer__submit" type="submit" disabled={busy || text.trim() === ''}>
         Добавить
       </button>
     </form>

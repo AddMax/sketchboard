@@ -1,0 +1,12 @@
+@use '../tokens' as t;
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(t.$board-min-column, 1fr));
+  gap: t.$gap;
+
+  &__empty {
+    padding: 32px 0;
+    opacity: 0.6;
+  }
+}

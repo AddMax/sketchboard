@@ -12,7 +12,7 @@
 | Realtime | Centrifugo 6 — WebSocket-сервер | `centrifugo/centrifugo:v6.9` (alpine) |
 | БД | PostgreSQL 18 | `postgres:18-alpine` |
 | Кэш и шина событий | Redis 8 | `redis:8-alpine` |
-| Фронтенд | React 19 + Vite (dev-server с HMR) | `node:24-alpine` |
+| Фронтенд | React 19 + Vite + SCSS | `node:24-alpine` |
 
 ## Как это связано
 
@@ -200,6 +200,7 @@ frontend/src/
     realtime/CentrifugoRealtimeChannel.ts адаптер поверх centrifuge-js
     container.ts              композиционный корень
   ui/                         компоненты, не знающие о транспорте
+  ui/styles/                  SCSS: токены, миксины и стили по блокам
 ```
 
 Компоненты получают адаптеры через контекст, поэтому в тестах на место
