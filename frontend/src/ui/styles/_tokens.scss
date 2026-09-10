@@ -6,6 +6,8 @@ $content-max-width: 1100px;
 $note-min-height: 130px;
 $note-action-size: 26px;
 $topbar-height: 57px;
+$canvas-swatch-size: 24px;
+$canvas-slider-width: 90px;
 
 $radius-control: 8px;
 $radius-note: 10px;
@@ -32,6 +34,11 @@ $sticker-lilac: #c8b6ff;
   --color-surface: #ffffff;
   --color-ink: #1b1d22;
   --color-danger: #d1345b;
+
+  // Лист для рисования белый в любой теме: чёрная кисть должна быть видна
+  --color-paper: #ffffff;
+  --color-grid: rgb(0 0 0 / 6%);
+  --color-grid-major: rgb(0 0 0 / 12%);
 }
 
 @media (prefers-color-scheme: dark) {

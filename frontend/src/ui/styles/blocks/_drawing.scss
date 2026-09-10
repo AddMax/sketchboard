@@ -37,14 +37,7 @@
     text-overflow: ellipsis;
   }
 
-  &__canvas {
-    display: grid;
-    flex: 1;
-    place-items: center;
-    background: var(--color-canvas);
-  }
-
-  &__hint,
+  &__loading,
   &__missing {
     margin: 0;
     padding: 32px 20px;

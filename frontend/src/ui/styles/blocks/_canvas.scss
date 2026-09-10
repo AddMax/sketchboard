@@ -1,0 +1,148 @@
+@use '../tokens' as t;
+@use '../mixins' as m;
+
+// Полотно занимает всё, что осталось под шапкой; панель и статус плавают поверх.
+.canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-paper);
+  touch-action: none;
+  user-select: none;
+
+  &__surface {
+    display: block;
+    cursor: crosshair;
+  }
+
+  &--grab &__surface {
+    cursor: grab;
+  }
+
+  &--grabbing &__surface {
+    cursor: grabbing;
+  }
+
+  &__toolbar {
+    @include m.floating;
+
+    position: absolute;
+    top: t.$gap;
+    left: 50%;
+    display: flex;
+    gap: t.$gap-tight;
+    align-items: center;
+    max-width: calc(100% - 2 * t.$gap);
+    padding: 6px 10px;
+    transform: translateX(-50%);
+    font-size: t.$font-size-small;
+  }
+
+  &__group {
+    display: flex;
+    gap: 6px;
+  }
+
+  &__swatch {
+    width: t.$canvas-swatch-size;
+    height: t.$canvas-swatch-size;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px t.$hairline;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+
+    &:hover {
+      transform: scale(1.1);
+    }
+
+    &--active {
+      border-color: var(--color-surface);
+      box-shadow: 0 0 0 2px var(--color-accent);
+    }
+  }
+
+  &__divider {
+    width: 1px;
+    height: 20px;
+    background: t.$hairline;
+  }
+
+  &__width {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+
+    input {
+      width: t.$canvas-slider-width;
+      accent-color: var(--color-accent);
+    }
+  }
+
+  &__width-value {
+    min-width: 2ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__zoom,
+  &__clear {
+    @include m.control;
+    @include m.disabled;
+
+    padding: 4px 10px;
+    font-size: inherit;
+  }
+
+  &__zoom {
+    min-width: 58px;
+    font-variant-numeric: tabular-nums;
+
+    &:hover {
+      border-color: var(--color-accent);
+    }
+  }
+
+  &__clear {
+    color: var(--color-danger);
+
+    &:hover:not(:disabled) {
+      border-color: var(--color-danger);
+    }
+  }
+
+  &__status {
+    @include m.floating;
+
+    position: absolute;
+    right: t.$gap;
+    bottom: t.$gap;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font: inherit;
+    font-size: t.$font-size-small;
+    color: var(--color-ink);
+    cursor: default;
+
+    &--saving {
+      opacity: 0.7;
+    }
+
+    &--error {
+      color: var(--color-danger);
+      cursor: pointer;
+    }
+  }
+
+  &__hint {
+    position: absolute;
+    bottom: t.$gap;
+    left: t.$gap;
+    margin: 0;
+    font-size: t.$font-size-small;
+    color: t.$note-ink;
+    opacity: 0.45;
+    pointer-events: none;
+  }
+}

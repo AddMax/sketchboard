@@ -110,7 +110,9 @@ ip link show $(ip route get 1.1.1.1 | awk '{print $5; exit}')   # смотрит
 | GET | `/api/notes` | список заметок |
 | POST | `/api/notes` | создать заметку |
 | PATCH | `/api/notes/{id}/position` | переместить заметку |
-| DELETE | `/api/notes/{id}` | удалить заметку |
+| DELETE | `/api/notes/{id}` | удалить заметку (вместе с рисунком) |
+| GET | `/api/notes/{id}/drawing` | штрихи рисунка заметки (пустой список, если не рисовали) |
+| PUT | `/api/notes/{id}/drawing` | сохранить рисунок целиком: `{"lines": [{id, points, color, width}]}` |
 | GET | `/api/realtime/access` | токен подключения и имя канала |
 | GET | `/ws` | WebSocket Centrifugo (проксируется в `/connection/websocket`) |
 

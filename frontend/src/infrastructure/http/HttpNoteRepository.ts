@@ -1,13 +1,8 @@
 import type { NoteRepository } from '../../application/ports/NoteRepository'
 import type { Note, NoteDraft } from '../../domain/note/Note'
-import { DomainError } from '../../domain/note/errors'
+import { jsonRequest } from './jsonRequest'
 
-/**
- * Адаптер порта заметок поверх REST API.
- *
- * Ответ 422 приходит от доменного слоя сервера, поэтому превращаем его
- * обратно в DomainError — UI показывает такую ошибку как поправимую.
- */
+/** Адаптер порта заметок поверх REST API. */
 export class HttpNoteRepository implements NoteRepository {
   constructor(private readonly baseUrl: string) {}
 
@@ -32,51 +27,7 @@ export class HttpNoteRepository implements NoteRepository {
     await this.request<void>(`/notes/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 
-  private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
-      ...init,
-    })
-
-    if (!response.ok) {
-      throw await this.toError(response)
-    }
-
-    return response.status === 204 ? (undefined as T) : ((await response.json()) as T)
+  private request<T>(path: string, init?: RequestInit): Promise<T> {
+    return jsonRequest<T>(`${this.baseUrl}${path}`, init)
   }
-
-  private async toError(response: Response): Promise<Error> {
-    const body: unknown = await response.json().catch(() => null)
-
-    if (response.status === 422 && isValidationBody(body)) {
-      const [field, message] = Object.entries(body.errors)[0]
-
-      return new DomainError(message, field)
-    }
-
-    if (isErrorBody(body)) {
-      return new Error(body.error)
-    }
-
-    return new Error(`${response.status} ${response.statusText}`)
-  }
-}
-
-function isValidationBody(body: unknown): body is { errors: Record<string, string> } {
-  return (
-    typeof body === 'object' &&
-    body !== null &&
-    'errors' in body &&
-    typeof (body as { errors: unknown }).errors === 'object' &&
-    (body as { errors: unknown }).errors !== null
-  )
-}
-
-function isErrorBody(body: unknown): body is { error: string } {
-  return (
-    typeof body === 'object' &&
-    body !== null &&
-    'error' in body &&
-    typeof (body as { error: unknown }).error === 'string'
-  )
 }

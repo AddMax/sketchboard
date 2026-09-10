@@ -14,7 +14,7 @@ PostgreSQL 18, Redis 8, React 19, Centrifugo 6, всё за nginx в Docker.
 make init                  # первый запуск: .env, секреты, сборка, старт, миграции
 make up / down / destroy   # destroy сносит и данные
 make logs                  # логи всех сервисов
-make test                  # тесты: 19 на бэке, 17 на фронте
+make test                  # тесты: 34 на бэке, 25 на фронте
 make schema-validate       # сверить XML-маппинг Doctrine со схемой БД
 make migration / migrate   # создать миграцию из маппинга / применить
 make cache-clear
@@ -58,6 +58,11 @@ UI → Application → Domain, а Infrastructure подключается к Dom
 - Агрегат копит события (`recordThat`) и отдаёт их через `releaseEvents()`.
   Публикует их **хендлер после успешной записи**, не репозиторий и не контроллер.
   В `DeleteNoteHandler` события снимаются до `remove()` — после удаления объект уже не наш.
+- Агрегатов два: `Note` и `Drawing` (рисунок заметки, ключ общий с заметкой).
+  Рисунок хранится одним JSON-документом (`StrokesType`) и всегда заменяется
+  целиком — клиент шлёт полный список штрихов, а не дельту. Событий он не
+  порождает и по realtime-каналу не летает: может весить сотни килобайт.
+  Связь между агрегатами держит `DeleteNoteHandler`, а не внешний ключ.
 - Маппинг Doctrine — XML в `Infrastructure/Persistence/Doctrine/Mapping/`.
   Имя файла кодирует FQCN относительно префикса `App\Domain`:
   `App\Domain\Note\Note` → `Note.Note.orm.xml`. Ошибиться легко, симптом —
@@ -68,9 +73,10 @@ UI → Application → Domain, а Infrastructure подключается к Dom
 
 ### Фронтенд (`frontend/src/`)
 
-Те же слои: `domain/` (правила заметки и чистая функция `applyRealtimeEvent`),
-`application/` (порты `NoteRepository`, `RealtimeChannel`, `RealtimeAccessProvider`
-и сценарий `useBoard`), `infrastructure/` (адаптеры + `container.ts` —
+Те же слои: `domain/` (правила заметки, чистая функция `applyRealtimeEvent`,
+типы рисунка и математика вьюпорта `Viewport.ts`), `application/` (порты
+`NoteRepository`, `DrawingRepository`, `RealtimeChannel`, `RealtimeAccessProvider`
+и сценарии `useBoard`, `useDrawing`), `infrastructure/` (адаптеры + `container.ts` —
 единственное место, где выбираются реализации), `ui/` (компоненты, страницы,
 маршрутизация).
 
@@ -89,7 +95,7 @@ ui/styles/
   _tokens.scss     размеры и радиусы переменными Sass, цвета — переменными CSS
   _mixins.scss     surface, control, disabled
   _base.scss       сброс и типографика
-  blocks/          по блоку интерфейса: layout, status, composer, board, note, drawing
+  blocks/          по блоку интерфейса: layout, status, composer, board, note, drawing, canvas
 ```
 
 Разделение внутри `_tokens.scss` не случайно: размеры и радиусы нужны
@@ -105,6 +111,11 @@ ui/styles/
   из канала, поэтому автор и остальные обновляются одним и тем же путём.
 - Правила заметки продублированы с бэкендом намеренно (ответить до сетевого
   запроса), но последнее слово за сервером. Меняя инвариант, правьте оба места.
+- Полотно `ui/components/canvas/InfiniteCanvas.tsx` держит вьюпорт, текущий
+  штрих и размеры в ref, а не в стейте: во время движения мыши сегменты идут
+  прямо в контекст, React рендерится только по завершении штриха. Сохранение —
+  через `useDebouncedCallback` (1,5 с после последнего штриха, flush при
+  размонтировании). Пределы кисти и числа линий совпадают с `Domain\Drawing`.
 
 ### Realtime
 
@@ -167,5 +178,6 @@ php-fpm живёт один запрос и соединения держать 
 авторизации нет (имя участника приходит от клиента и ничем не подтверждается,
 место для проверки — `IssueRealtimeAccessHandler`); фронтенд отдаётся Vite
 dev-сервером, продакшен-сборки в стеке нет; интеграционных тестов нет, только
-юнит-тесты домена и разбора маршрутов; на странице рисования пока нет полотна —
-`DrawingPage` держит для него место и окружение (шапка, возврат к заметкам).
+юнит-тесты домена, разбора маршрутов и математики вьюпорта; рисунок не
+синхронизируется между участниками в realtime — каждый видит его при открытии
+страницы, а побеждает последнее сохранение.

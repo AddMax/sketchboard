@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { applyRealtimeEvent, emptyBoard, replaceBoard } from '../../domain/board/Board'
 import type { Board } from '../../domain/board/Board'
 import { draftNote } from '../../domain/note/Note'
-import { DomainError } from '../../domain/note/errors'
 import type { ConnectionState, RealtimeEvent } from '../../domain/realtime/RealtimeEvent'
+import { describeError as describe } from '../shared/describeError'
 import { useBoardDependencies } from './BoardDependencies'
 
 export interface BoardState {
@@ -127,12 +127,4 @@ export function useBoard(): BoardState {
   const dismissError = useCallback(() => setError(null), [])
 
   return { board, loaded, connection, clients, error, addNote, moveNote, removeNote, ping, dismissError }
-}
-
-function describe(cause: unknown): string {
-  if (cause instanceof DomainError) {
-    return cause.message
-  }
-
-  return cause instanceof Error ? cause.message : 'Неизвестная ошибка'
 }

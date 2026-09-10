@@ -1,5 +1,6 @@
 import type { BoardDependencies } from '../application/board/BoardDependencies'
 import { config, websocketUrl } from './config'
+import { HttpDrawingRepository } from './http/HttpDrawingRepository'
 import { HttpNoteRepository } from './http/HttpNoteRepository'
 import { HttpRealtimeAccessProvider } from './http/HttpRealtimeAccessProvider'
 import { CentrifugoRealtimeChannel } from './realtime/CentrifugoRealtimeChannel'
@@ -12,6 +13,7 @@ import { CentrifugoRealtimeChannel } from './realtime/CentrifugoRealtimeChannel'
 export function createDependencies(participant: string): BoardDependencies {
   return {
     notes: new HttpNoteRepository(config.apiBase),
+    drawings: new HttpDrawingRepository(config.apiBase),
     realtime: new CentrifugoRealtimeChannel(
       websocketUrl(),
       new HttpRealtimeAccessProvider(config.apiBase),

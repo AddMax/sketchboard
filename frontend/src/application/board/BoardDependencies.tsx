@@ -1,10 +1,12 @@
 import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
+import type { DrawingRepository } from '../ports/DrawingRepository'
 import type { NoteRepository } from '../ports/NoteRepository'
 import type { RealtimeChannel } from '../ports/RealtimeChannel'
 
 export interface BoardDependencies {
   readonly notes: NoteRepository
+  readonly drawings: DrawingRepository
   readonly realtime: RealtimeChannel
 }
 
