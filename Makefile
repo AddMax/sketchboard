@@ -4,7 +4,7 @@ PHP := $(DC) exec -T php
 NODE := $(DC) exec -T frontend
 
 .DEFAULT_GOAL := help
-.PHONY: help init up down destroy restart build logs ps sh sh-node psql redis-cli migration migrate schema-validate cache-clear composer npm test test-back test-front health
+.PHONY: help init up down destroy restart build logs ps sh sh-node psql redis-cli migration migrate schema-validate cache-clear composer npm test test-back test-front health xdebug-on xdebug-off xdebug-status
 
 help: ## Список доступных команд
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -87,6 +87,18 @@ test-back: ## Юнит-тесты доменного слоя PHP (без БД �
 
 test-front: ## Юнит-тесты доменного слоя фронтенда
 	$(NODE) npm run test
+
+xdebug-on: ## Включить Xdebug (режим debug) и пересоздать контейнер php
+	@grep -q '^XDEBUG_MODE=' .env && sed -i 's/^XDEBUG_MODE=.*/XDEBUG_MODE=debug/' .env || echo 'XDEBUG_MODE=debug' >> .env
+	$(DC) up -d php
+	@echo "Xdebug включён: IDE должна слушать порт 9003"
+
+xdebug-off: ## Выключить Xdebug и пересоздать контейнер php
+	@grep -q '^XDEBUG_MODE=' .env && sed -i 's/^XDEBUG_MODE=.*/XDEBUG_MODE=off/' .env || echo 'XDEBUG_MODE=off' >> .env
+	$(DC) up -d php
+
+xdebug-status: ## Текущий режим Xdebug в контейнере php
+	@$(PHP) php -r 'echo "xdebug: ", extension_loaded("xdebug") ? (implode(",", xdebug_info("mode")) ?: "off") : "не загружен", PHP_EOL;'
 
 health: ## Проверить связность стека через API
 	@curl -sS http://localhost:$$(grep ^HTTP_PORT .env | cut -d= -f2)/api/health | tee /dev/null; echo

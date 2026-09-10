@@ -41,6 +41,13 @@ services:
       CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
       CENTRIFUGO_TOKEN_SECRET: ${CENTRIFUGO_TOKEN_SECRET}
       CENTRIFUGO_TOKEN_TTL: ${CENTRIFUGO_TOKEN_TTL:-3600}
+      # Xdebug: off | debug | debug,develop (см. docker/php/conf.d/xdebug.ini)
+      XDEBUG_MODE: ${XDEBUG_MODE:-off}
+      # Имя сервера в PhpStorm для отладки CLI (bin/console, phpunit)
+      PHP_IDE_CONFIG: serverName=sketchboard
+    # IDE с отладчиком слушает на хосте; в Linux это имя само не появляется
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./backend:/var/www/backend
     depends_on:

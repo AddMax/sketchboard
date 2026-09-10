@@ -1,0 +1,20 @@
+# Профайлер только в dev. API отдаёт JSON, поэтому тулбар в ответы не
+# встраивается — вход через http://localhost:8080/_profiler/ или по заголовку
+# X-Debug-Token-Link, который есть у каждого ответа API.
+when@dev:
+    web_profiler:
+        toolbar: true
+        intercept_redirects: false
+
+    framework:
+        profiler:
+            only_exceptions: false
+            collect_serializer_data: true
+
+when@test:
+    web_profiler:
+        toolbar: false
+        intercept_redirects: false
+
+    framework:
+        profiler: { collect: false }

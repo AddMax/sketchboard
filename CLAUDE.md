@@ -19,7 +19,11 @@ make schema-validate       # сверить XML-маппинг Doctrine со с�
 make migration / migrate   # создать миграцию из маппинга / применить
 make cache-clear
 make composer c="require ..."   # make npm c="install ..."
+make xdebug-on / xdebug-off    # Xdebug выключен по умолчанию; переключение пересоздаёт php
 ```
+
+Профайлер Symfony: <http://localhost:8080/_profiler/>, у каждого ответа API есть
+`X-Debug-Token-Link`. Как настроить IDE под Xdebug — в README, раздел «Отладка».
 
 Один тест:
 
@@ -153,6 +157,14 @@ php-fpm живёт один запрос и соединения держать 
   (`use_savepoints`, `auto_generate_proxy_classes`). Симптом — «Unrecognized option».
 - Зависимости и миграции накатывает entrypoint контейнера php при старте;
   отдельных шагов после `make up` не требуется.
+- **Twig и WebProfilerBundle — только dev/test.** Шаблонов у приложения нет,
+  Twig стоит как зависимость профайлера. nginx направляет в PHP лишь `/api`,
+  `/_profiler` и `/_wdt`; новый не-API путь бэкенда нужно добавить в
+  `docker/nginx/conf.d/default.conf`, иначе он уйдёт во Vite.
+- **Xdebug** берёт режим из переменной `XDEBUG_MODE` (приоритетнее ini), поэтому
+  смена режима — это пересоздание контейнера, а не правка `xdebug.ini`.
+  `host.docker.internal` в Linux появляется только благодаря `extra_hosts`.
+  `fastcgi_read_timeout` в nginx поднят до 600 с ради остановок на брейкпоинте.
 - Правки PHP подхватываются сразу (bind-mount + `opcache.validate_timestamps`),
   но после `composer require` или правки `config/services.yaml` бывает нужен
   `make cache-clear`.
