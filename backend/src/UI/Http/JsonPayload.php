@@ -56,4 +56,16 @@ final readonly class JsonPayload
 
         return is_numeric($value) ? (int) $value : $default;
     }
+
+    /**
+     * Список как есть: что внутри — проверяет домен, а не транспорт.
+     *
+     * @return list<mixed>
+     */
+    public function list(string $key): array
+    {
+        $value = $this->data[$key] ?? null;
+
+        return \is_array($value) && array_is_list($value) ? $value : [];
+    }
 }

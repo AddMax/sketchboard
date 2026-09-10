@@ -37,6 +37,7 @@ services:
 
     # Порты домена и приложения → их единственные реализации
     App\Domain\Note\NoteRepository: '@App\Infrastructure\Persistence\Doctrine\DoctrineNoteRepository'
+    App\Domain\Drawing\DrawingRepository: '@App\Infrastructure\Persistence\Doctrine\DoctrineDrawingRepository'
     App\Application\Shared\Port\DomainEventPublisher: '@App\Infrastructure\Realtime\Centrifugo\CentrifugoEventPublisher'
     App\Application\Shared\Port\RealtimeAccess: '@App\Infrastructure\Realtime\Centrifugo\CentrifugoRealtimeAccess'
 
