@@ -104,7 +104,8 @@ ip link show $(ip route get 1.1.1.1 | awk '{print $5; exit}')   # смотрит
 
 | Метод | Путь | Назначение |
 | --- | --- | --- |
-| GET | `/` | React-приложение (Vite dev-server) |
+| GET | `/` | React-приложение (Vite dev-server): доска заметок |
+| GET | `/notes/{id}/draw` | то же приложение, страница доски для рисования по заметке |
 | GET | `/api/health` | статус PHP, PostgreSQL, Redis |
 | GET | `/api/notes` | список заметок |
 | POST | `/api/notes` | создать заметку |
