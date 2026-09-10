@@ -6,6 +6,7 @@ namespace App\UI\Http\Controller;
 
 use App\Infrastructure\Realtime\Centrifugo\CentrifugoApi;
 use Doctrine\DBAL\Connection;
+use OpenApi\Attributes as OA;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Kernel;
@@ -15,6 +16,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * Проверка связности стека. Намеренно ходит в инфраструктуру напрямую:
  * это диагностика окружения, а не сценарий приложения.
  */
+#[OA\Tag(name: 'Диагностика')]
 final readonly class HealthController
 {
     public function __construct(
@@ -26,6 +28,21 @@ final readonly class HealthController
     }
 
     #[Route('/api/health', name: 'health', methods: ['GET'])]
+    #[OA\Get(
+        summary: 'Состояние стека',
+        description: 'Проверяет PostgreSQL, Redis и Centrifugo одним запросом. '
+            .'Любой сбой — `503` и текст ошибки вместо `ok` в соответствующем поле.',
+    )]
+    #[OA\Response(
+        response: 200,
+        description: 'Все зависимости отвечают',
+        content: new OA\JsonContent(ref: '#/components/schemas/Health'),
+    )]
+    #[OA\Response(
+        response: 503,
+        description: 'Хотя бы одна зависимость недоступна',
+        content: new OA\JsonContent(ref: '#/components/schemas/Health'),
+    )]
     public function __invoke(): JsonResponse
     {
         $checks = [

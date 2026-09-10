@@ -24,6 +24,7 @@ make xdebug-on / xdebug-off    # Xdebug выключен по умолчанию
 
 Профайлер Symfony: <http://localhost:8080/_profiler/>, у каждого ответа API есть
 `X-Debug-Token-Link`. Как настроить IDE под Xdebug — в README, раздел «Отладка».
+Документация API: <http://localhost:8080/api/doc> (Swagger UI), `/api/doc.json` — OpenAPI.
 
 Один тест:
 
@@ -53,7 +54,7 @@ UI → Application → Domain, а Infrastructure подключается к Dom
 | `Domain/` | чистый PHP. Ни `use Symfony\…`, ни `use Doctrine\…`, ни атрибутов ORM |
 | `Application/` | сценарии «команда + хендлер», порты, read-модели |
 | `Infrastructure/` | единственное место, где живут Doctrine, Centrifugo, HTTP-клиент |
-| `UI/` | разобрать запрос → вызвать хендлер → отдать JSON |
+| `UI/` | разобрать запрос → вызвать хендлер → отдать JSON. **Один маршрут — один класс** с `__invoke`, каталоги по контексту: `Controller/Note/`, `Controller/Drawing/`, `Controller/Realtime/` |
 
 - Инварианты стерегут объекты-значения (`NoteText`, `Position`, `Color`, `Author`),
   а не валидатор: `symfony/validator` намеренно не установлен. VO бросают
@@ -71,6 +72,14 @@ UI → Application → Domain, а Infrastructure подключается к Dom
   Имя файла кодирует FQCN относительно префикса `App\Domain`:
   `App\Domain\Note\Note` → `Note.Note.orm.xml`. Ошибиться легко, симптом —
   «Class 'App\Domain\Note' does not exist».
+- Документация API — атрибуты `OpenApi\Attributes` (`OA\Get`, `OA\RequestBody`,
+  `OA\Response`…) на `__invoke` контроллера, тег `OA\Tag` на классе. Путь и метод
+  Nelmio берёт из `#[Route]`, дублировать не нужно. Переиспользуемые схемы
+  (`Note`, `Drawing`, `ValidationError`…) — в `config/packages/nelmio_api_doc.yaml`,
+  ссылки через `ref: '#/components/schemas/…'`; на read-моделях атрибутов нет,
+  чтобы Application не зависел от библиотеки документации. Меняя `NoteView` или
+  `DrawingView`, правьте и схему. `OA\Schema` на методе контроллера нельзя —
+  Nelmio падает с «root annotation … is not allowed».
 - Форма realtime-сообщения (`{event, payload, at}`) описана в
   `Infrastructure/Realtime/DomainEventSerializer` — это контракт с фронтендом,
   а не часть домена. Меняя её, правьте `frontend/src/domain/realtime/RealtimeEvent.ts`.
@@ -157,8 +166,12 @@ php-fpm живёт один запрос и соединения держать 
   (`use_savepoints`, `auto_generate_proxy_classes`). Симптом — «Unrecognized option».
 - Зависимости и миграции накатывает entrypoint контейнера php при старте;
   отдельных шагов после `make up` не требуется.
-- **Twig и WebProfilerBundle — только dev/test.** Шаблонов у приложения нет,
-  Twig стоит как зависимость профайлера. nginx направляет в PHP лишь `/api`,
+- **Twig, WebProfilerBundle, NelmioApiDocBundle, symfony/asset — только dev/test.**
+  Шаблонов у приложения нет, Twig стоит как зависимость профайлера и Swagger UI;
+  без `symfony/asset` и `framework.assets` Nelmio молча удаляет контроллер UI,
+  а Twig падает на `assets.packages`. Ассеты Swagger UI грузятся с CDN
+  (`html_config.assets_mode: cdn`): nginx отдаёт из `public/` только `/api`.
+  nginx направляет в PHP лишь `/api`,
   `/_profiler` и `/_wdt`; новый не-API путь бэкенда нужно добавить в
   `docker/nginx/conf.d/default.conf`, иначе он уйдёт во Vite.
 - **Xdebug** берёт режим из переменной `XDEBUG_MODE` (приоритетнее ini), поэтому
@@ -176,8 +189,9 @@ php-fpm живёт один запрос и соединения держать 
 - Стили — классы в SCSS, а не инлайн и не утилиты в разметке. Исключение уже
   в коде: цвет стикера приходит из данных, поэтому он идёт через `style`.
   Величины не хардкодить — в `_tokens.scss`.
-- Новый сценарий: DTO команды + хендлер в `Application/Note/Command/<Имя>/`,
+- Новый сценарий: DTO команды + хендлер в `Application/<Контекст>/Command/<Имя>/`,
   вызов из контроллера напрямую (командной шины нет — хендлеры инжектятся как сервисы).
+  Контроллер — отдельный файл на маршрут, с OpenAPI-атрибутами (см. «Бэкенд»).
 - Новый порт: интерфейс в `Application/Shared/Port/`, реализация в `Infrastructure/`,
   связка — явной строкой в `backend/config/services.yaml`.
 - `.env` не в репозитории; при добавлении переменной обновляйте `.env.example`.
