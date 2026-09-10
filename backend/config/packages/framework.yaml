@@ -16,3 +16,5 @@ when@dev:
     framework:
         router:
             strict_requirements: true
+        # Компонент Asset нужен только Swagger UI (symfony/asset стоит в require-dev)
+        assets: ~

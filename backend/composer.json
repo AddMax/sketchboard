@@ -24,7 +24,9 @@
         "symfony/yaml": "^8.1"
     },
     "require-dev": {
+        "nelmio/api-doc-bundle": "^5.12",
         "phpunit/phpunit": "^12",
+        "symfony/asset": "^8.1",
         "symfony/debug-bundle": "^8.1",
         "symfony/maker-bundle": "^1.62",
         "symfony/phpunit-bridge": "^8.1",

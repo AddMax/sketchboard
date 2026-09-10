@@ -10,4 +10,6 @@ return [
     // Twig нужен только профайлеру: API отдаёт JSON, шаблонов у приложения нет
     Symfony\Bundle\TwigBundle\TwigBundle::class => ['dev' => true, 'test' => true],
     Symfony\Bundle\WebProfilerBundle\WebProfilerBundle::class => ['dev' => true, 'test' => true],
+    // Документация API — инструмент разработки, как и профайлер; Swagger UI живёт на Twig
+    Nelmio\ApiDocBundle\NelmioApiDocBundle::class => ['dev' => true, 'test' => true],
 ];

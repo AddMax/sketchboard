@@ -106,7 +106,8 @@ ip link show $(ip route get 1.1.1.1 | awk '{print $5; exit}')   # смотрит
 | --- | --- | --- |
 | GET | `/` | React-приложение (Vite dev-server): доска заметок |
 | GET | `/notes/{id}/draw` | то же приложение, страница доски для рисования по заметке |
-| GET | `/api/health` | статус PHP, PostgreSQL, Redis |
+| GET | `/api/doc` | Swagger UI с описанием API (только dev); `/api/doc.json` — спецификация OpenAPI |
+| GET | `/api/health` | статус PHP, PostgreSQL, Redis, Centrifugo |
 | GET | `/api/notes` | список заметок |
 | POST | `/api/notes` | создать заметку |
 | PATCH | `/api/notes/{id}/position` | переместить заметку |
@@ -133,6 +134,14 @@ make xdebug-on     # включить пошаговую отладку (пер�
 make xdebug-off
 make destroy       # снести окружение вместе с данными
 ```
+
+## Документация API
+
+Swagger UI: <http://localhost:8080/api/doc>, спецификация OpenAPI 3 —
+<http://localhost:8080/api/doc.json> (NelmioApiDocBundle, только `dev`).
+Операции описаны атрибутами `OpenApi\Attributes` прямо на контроллерах, общие
+схемы ответов и ошибок — в `backend/config/packages/nelmio_api_doc.yaml`.
+Из UI можно выполнять запросы к живому стеку.
 
 ## Отладка бэкенда
 

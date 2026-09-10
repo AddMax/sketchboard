@@ -1,0 +1,125 @@
+# Документация API (только dev): Swagger UI на /api/doc, спецификация — /api/doc.json.
+# Операции описаны атрибутами OpenApi на контроллерах; здесь — то, что общее для
+# многих операций: сведения об API и переиспользуемые схемы ответов.
+# Схемы держим тут, а не атрибутами на read-моделях, чтобы слой Application
+# не зависел от библиотеки документации. Меняя NoteView/DrawingView — правьте и их.
+when@dev:
+    nelmio_api_doc:
+        html_config:
+            # Ассеты Swagger UI с CDN: nginx отдаёт из public только /api, а
+            # раскладывать bundles/ в bind-mount ради UI не хочется
+            assets_mode: cdn
+
+        areas:
+            default:
+                path_patterns:
+                    - ^/api(?!/doc(\.json)?$)
+
+        documentation:
+            info:
+                title: Sketchboard API
+                version: 0.1.0
+                description: |
+                    Realtime-доска заметок. HTTP API покрывает команды и чтение;
+                    изменения доставляются всем участникам через WebSocket (Centrifugo),
+                    подключение к которому выдаёт `GET /api/realtime/access`.
+
+                    Нарушение доменных правил — `422` с полем и текстом ошибки,
+                    отсутствующая заметка — `404`. Авторизации нет: имя участника
+                    приходит от клиента и ничем не подтверждается.
+            tags:
+                - name: Заметки
+                  description: Стикеры на общей доске
+                - name: Рисунок
+                  description: Доска для рисования, прикреплённая к заметке
+                - name: Realtime
+                  description: Доступ к WebSocket-каналу
+                - name: Диагностика
+            components:
+                schemas:
+                    Note:
+                        type: object
+                        required: [id, text, x, y, color, author, createdAt]
+                        properties:
+                            id: { type: string, format: uuid, example: 01a08a63-e792-7a84-ac0f-129ad0bcfb42 }
+                            text: { type: string, maxLength: 2000, example: Купить молоко }
+                            x: { type: integer, minimum: 0, maximum: 10000, example: 120 }
+                            y: { type: integer, minimum: 0, maximum: 10000, example: 80 }
+                            color: { type: string, pattern: '^#[0-9a-f]{6}$', example: '#ffd166' }
+                            author: { type: string, maxLength: 64, example: гость-451 }
+                            createdAt: { type: string, format: date-time, example: '2026-09-10T08:16:38+00:00' }
+                    Point:
+                        type: object
+                        required: [x, y]
+                        properties:
+                            x: { type: number, format: double, example: 120.5 }
+                            y: { type: number, format: double, example: -34 }
+                    DrawingLine:
+                        type: object
+                        description: Один штрих кисти. Идентификатор назначает клиент.
+                        required: [id, points, color, width]
+                        properties:
+                            id: { type: string, maxLength: 64, example: 7d1e0c7a-2f3e-4f0b-9c1a-5a4c2b7e9d10 }
+                            points:
+                                type: array
+                                minItems: 1
+                                maxItems: 20000
+                                items: { $ref: '#/components/schemas/Point' }
+                            color: { type: string, pattern: '^#[0-9a-f]{6}$', example: '#000000' }
+                            width: { type: number, format: double, minimum: 0.5, maximum: 100, example: 3 }
+                    Drawing:
+                        type: object
+                        required: [noteId, lines, updatedAt]
+                        properties:
+                            noteId: { type: string, format: uuid }
+                            lines:
+                                type: array
+                                maxItems: 5000
+                                items: { $ref: '#/components/schemas/DrawingLine' }
+                            updatedAt:
+                                type: string
+                                format: date-time
+                                nullable: true
+                                description: null, если на заметке ещё не рисовали
+                    RealtimeAccess:
+                        type: object
+                        required: [token, channel, expiresAt]
+                        properties:
+                            token: { type: string, description: JWT для подключения к Centrifugo }
+                            channel: { type: string, example: 'board:main' }
+                            expiresAt: { type: string, format: date-time }
+                    Health:
+                        type: object
+                        required: [status, php, symfony, postgres, redis, centrifugo]
+                        properties:
+                            status: { type: string, enum: [ok, degraded] }
+                            php: { type: string, example: 8.5.10 }
+                            symfony: { type: string, example: 8.1.6 }
+                            postgres: { type: string, example: ok, description: '`ok` или `error: …`' }
+                            redis: { type: string, example: ok }
+                            centrifugo: { type: string, example: ok }
+                    ValidationError:
+                        type: object
+                        description: Нарушено правило домена; ключ — имя поля
+                        required: [errors]
+                        properties:
+                            errors:
+                                type: object
+                                additionalProperties: { type: string }
+                                example: { text: Текст заметки не может быть пустым }
+                    NotFoundError:
+                        type: object
+                        required: [error]
+                        properties:
+                            error: { type: string, example: Заметка 01a08a63-e792-7a84-ac0f-129ad0bcfb42 не найдена }
+                responses:
+                    ValidationError:
+                        description: Нарушено правило домена
+                        content:
+                            application/json:
+                                schema: { $ref: '#/components/schemas/ValidationError' }
+                    NoteNotFound:
+                        description: Заметка не найдена
+                        content:
+                            application/json:
+                                schema: { $ref: '#/components/schemas/NotFoundError' }
