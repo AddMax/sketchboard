@@ -8,6 +8,8 @@ import { useBoardDependencies } from './BoardDependencies'
 
 export interface BoardState {
   readonly board: Board
+  /** Первичная загрузка завершена (успехом или ошибкой): пустая доска — уже не «ещё грузится». */
+  readonly loaded: boolean
   readonly connection: ConnectionState
   readonly clients: number
   readonly error: string | null
@@ -28,6 +30,7 @@ export function useBoard(): BoardState {
   const { notes, realtime } = useBoardDependencies()
 
   const [board, setBoard] = useState<Board>(emptyBoard)
+  const [loaded, setLoaded] = useState(false)
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const [clients, setClients] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -40,14 +43,19 @@ export function useBoard(): BoardState {
 
     notes
       .list()
-      .then((loaded) => {
+      .then((fetched) => {
         if (!cancelled) {
-          setBoard(replaceBoard(loaded))
+          setBoard(replaceBoard(fetched))
         }
       })
       .catch((cause: unknown) => {
         if (!cancelled) {
           setError(describe(cause))
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoaded(true)
         }
       })
 
@@ -118,7 +126,7 @@ export function useBoard(): BoardState {
 
   const dismissError = useCallback(() => setError(null), [])
 
-  return { board, connection, clients, error, addNote, moveNote, removeNote, ping, dismissError }
+  return { board, loaded, connection, clients, error, addNote, moveNote, removeNote, ping, dismissError }
 }
 
 function describe(cause: unknown): string {

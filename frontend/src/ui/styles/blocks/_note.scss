@@ -23,17 +23,39 @@
     opacity: 0.75;
   }
 
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: t.$gap-tight;
+  }
+
+  // Карандаш и крестик — одна группа: одинаковая площадь нажатия и реакция на hover
+  &__edit,
   &__remove {
-    padding: 0 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: t.$note-action-size;
+    height: t.$note-action-size;
+    padding: 0;
     border: none;
+    border-radius: t.$radius-control;
     background: transparent;
     color: inherit;
-    font-size: 18px;
     line-height: 1;
-    transition: opacity 0.15s ease;
+    text-decoration: none;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
 
     &:hover {
-      opacity: 0.65;
+      background: rgb(0 0 0 / 8%);
     }
+  }
+
+  &__edit {
+    font-size: 15px;
+  }
+
+  &__remove {
+    font-size: 18px;
   }
 }
