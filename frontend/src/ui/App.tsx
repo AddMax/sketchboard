@@ -28,6 +28,7 @@ export function App({ author }: { author: string }) {
 
       {route.kind === 'draw' ? (
         <DrawingPage
+          noteId={route.noteId}
           note={state.board.find((note) => note.id === route.noteId)}
           loaded={state.loaded}
         />

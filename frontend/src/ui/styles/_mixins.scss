@@ -27,3 +27,11 @@
     cursor: not-allowed;
   }
 }
+
+/// Плавающая панель поверх полотна: отделена тенью, а не рамкой снизу.
+@mixin floating {
+  border: 1px solid t.$hairline;
+  border-radius: t.$radius-control;
+  background: var(--color-surface);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 12%);
+}
