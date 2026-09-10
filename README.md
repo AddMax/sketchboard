@@ -129,8 +129,66 @@ make schema-validate  # сверить XML-маппинг со схемой БД
 make psql          # psql в контейнере postgres
 make composer c="require symfony/mailer"
 make npm c="install zustand"
+make xdebug-on     # включить пошаговую отладку (пересоздаёт контейнер php)
+make xdebug-off
 make destroy       # снести окружение вместе с данными
 ```
+
+## Отладка бэкенда
+
+### Web-профайлер Symfony
+
+Работает в `dev` и открывается по адресу <http://localhost:8080/_profiler/>.
+API отдаёт JSON, поэтому тулбар в ответы не встраивается: у каждого ответа
+есть заголовок `X-Debug-Token-Link` с прямой ссылкой на профиль запроса,
+а последние запросы видны в списке профайлера. Там же — SQL Doctrine с таймингами,
+логи, события, маршрутизация и запросы к Centrifugo (панель HTTP Client).
+
+### Xdebug
+
+Расширение собрано в образ php, но по умолчанию выключено (`XDEBUG_MODE=off`
+в `.env`). Включение:
+
+```bash
+make xdebug-on      # XDEBUG_MODE=debug, контейнер php пересоздаётся
+make xdebug-status  # проверить режим
+make xdebug-off
+```
+
+В режиме `debug` Xdebug на каждом запросе подключается к IDE на хосте
+(`host.docker.internal:9003`); если IDE не слушает, через 200 мс сдаётся,
+и запрос выполняется как обычно. Отладочный лог Xdebug идёт в `make logs`.
+
+Настройка IDE (маппинг путей обязателен: в контейнере код лежит не там,
+где на хосте):
+
+| Что | Значение |
+| --- | --- |
+| Порт отладчика | `9003` |
+| Путь на хосте → в контейнере | `./backend` → `/var/www/backend` |
+| PhpStorm, имя сервера | `sketchboard` (host `localhost`, port `8080`) |
+| IDE key | `PHPSTORM` |
+
+В PhpStorm: *Settings → PHP → Servers* → добавить сервер `sketchboard`
+с включённым *Use path mappings*, затем *Run → Start Listening for PHP Debug
+Connections*. Имя сервера уже передано в контейнер через `PHP_IDE_CONFIG`,
+поэтому отладка `bin/console` и `phpunit` из `make sh` работает без
+дополнительных настроек.
+
+Для VS Code (расширение PHP Debug) конфигурация `launch.json`:
+
+```json
+{
+  "name": "Xdebug: sketchboard",
+  "type": "php",
+  "request": "launch",
+  "port": 9003,
+  "pathMappings": { "/var/www/backend": "${workspaceFolder}/backend" }
+}
+```
+
+Пока запрос стоит на точке останова, nginx ждёт ответа php до 10 минут
+(`fastcgi_read_timeout`), поэтому вместо 504 вы дошагаете до конца.
 
 ## Архитектура
 
@@ -222,7 +280,7 @@ make test          # домен бэкенда и фронтенда
 ```
 
 Обе группы работают без базы, Redis и контейнера — это и есть проверка того,
-что домен ни от чего не зависит: 19 тестов PHP за ~5 мс, 13 тестов TS за ~15 мс.
+что домен ни от чего не зависит: 34 теста PHP и 25 тестов TS за миллисекунды.
 
 ## Проверено
 

@@ -24,7 +24,7 @@ RUN apk add --no-cache --virtual .build-deps \
     && for ext in pdo_pgsql intl zip opcache pcntl sockets; do \
            docker-php-ext-install -j"$(nproc)" "$ext"; \
        done \
-    && pecl install redis \
+    && pecl install redis xdebug \
     && docker-php-ext-enable redis \
     && apk del .build-deps \
     && rm -rf /tmp/pear /usr/src/php/ext/*/modules
@@ -40,6 +40,9 @@ RUN deluser www-data 2>/dev/null || true; \
     mkdir -p /var/www/backend /var/www/.composer; \
     chown -R www-data:www-data /var/www
 
+# Xdebug собран, но не включён docker-php-ext-enable: его подключает
+# conf.d/xdebug.ini, а режим задаёт переменная XDEBUG_MODE (по умолчанию off —
+# выключенное расширение почти ничего не стоит)
 COPY conf.d/ /usr/local/etc/php/conf.d/
 COPY entrypoint.sh /usr/local/bin/entrypoint
 RUN chmod +x /usr/local/bin/entrypoint
