@@ -40,8 +40,9 @@ final readonly class CentrifugoApi
     public function presenceCount(string $channel): int
     {
         $result = $this->call('presence_stats', ['channel' => $channel]);
+        $count = $result['num_clients'] ?? 0;
 
-        return (int) ($result['num_clients'] ?? 0);
+        return is_numeric($count) ? (int) $count : 0;
     }
 
     /**
@@ -66,7 +67,7 @@ final readonly class CentrifugoApi
             /** @var array{error?: array{message?: string, code?: int}, result?: array<string, mixed>} $body */
             $body = $response->toArray(false);
         } catch (HttpException $e) {
-            throw new CentrifugoUnavailable(sprintf('Centrifugo недоступен: %s', $e->getMessage()), previous: $e);
+            throw new CentrifugoUnavailable(sprintf('Centrifugo недоступен: %s', $e->getMessage()), $e->getCode(), previous: $e);
         }
 
         // Centrifugo отвечает 200 даже на логические ошибки — смотрим тело

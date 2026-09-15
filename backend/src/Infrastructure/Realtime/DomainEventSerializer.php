@@ -39,10 +39,7 @@ final readonly class DomainEventSerializer
             $event instanceof NoteWasCreated,
             $event instanceof NoteWasMoved => NoteView::fromNote($event->note)->jsonSerialize(),
             $event instanceof NoteWasDeleted => ['id' => $event->noteId->toString()],
-            default => throw new \LogicException(sprintf(
-                'Для события %s не описано представление',
-                $event::class,
-            )),
+            default => throw new \LogicException(sprintf('Для события %s не описано представление', $event::class)),
         };
     }
 }

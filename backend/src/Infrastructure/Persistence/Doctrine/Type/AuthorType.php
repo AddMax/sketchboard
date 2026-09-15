@@ -7,6 +7,9 @@ namespace App\Infrastructure\Persistence\Doctrine\Type;
 use App\Domain\Note\ValueObject\Author;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 
+/**
+ * @extends StringValueObjectType<Author>
+ */
 final class AuthorType extends StringValueObjectType
 {
     public const string NAME = 'note_author';

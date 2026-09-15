@@ -1,0 +1,25 @@
+# Статический анализ: make stan. Уровень максимальный — код небольшой, и
+# дешевле держать планку с самого начала, чем поднимать её потом.
+# Расширения symfony/doctrine/phpunit подключает phpstan/extension-installer.
+parameters:
+    level: max
+    tmpDir: var/cache/phpstan
+
+    paths:
+        - src
+        - tests
+
+    # Автосгенерированный код Doctrine, к тому же он не в src
+    excludePaths:
+        - migrations
+
+    symfony:
+        # Контейнер dev, который собирает entrypoint (или make cache-clear):
+        # по нему PHPStan знает типы сервисов и параметров
+        containerXmlPath: var/cache/dev/App_KernelDevDebugContainer.xml
+
+    doctrine:
+        # Сущности маппятся XML, объектный менеджер для анализа не поднимаем:
+        # анализ не должен требовать базы
+        objectManagerLoader: null
+

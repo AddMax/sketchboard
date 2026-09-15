@@ -7,6 +7,9 @@ namespace App\Infrastructure\Persistence\Doctrine\Type;
 use App\Domain\Note\ValueObject\NoteText;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 
+/**
+ * @extends StringValueObjectType<NoteText>
+ */
 final class NoteTextType extends StringValueObjectType
 {
     public const string NAME = 'note_text';

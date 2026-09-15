@@ -28,7 +28,7 @@ class Note
 
     private function __construct(
         private readonly NoteId $id,
-        private NoteText $text,
+        private readonly NoteText $text,
         private Position $position,
         private readonly Color $color,
         private readonly Author $author,

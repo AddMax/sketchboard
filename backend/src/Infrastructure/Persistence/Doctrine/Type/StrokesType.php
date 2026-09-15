@@ -7,7 +7,8 @@ namespace App\Infrastructure\Persistence\Doctrine\Type;
 use App\Domain\Drawing\ValueObject\Strokes;
 use App\Domain\Shared\InvalidArgument;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Types\ConversionException;
+use Doctrine\DBAL\Types\Exception\InvalidType;
+use Doctrine\DBAL\Types\Exception\ValueNotConvertible;
 use Doctrine\DBAL\Types\Type;
 
 /**
@@ -28,7 +29,7 @@ final class StrokesType extends Type
         return $platform->getJsonTypeDeclarationSQL($column);
     }
 
-    public function convertToPHPValue($value, AbstractPlatform $platform): ?Strokes
+    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): ?Strokes
     {
         if (null === $value) {
             return null;
@@ -38,26 +39,31 @@ final class StrokesType extends Type
             return $value;
         }
 
-        try {
-            $decoded = json_decode(\is_resource($value) ? (string) stream_get_contents($value) : (string) $value, true, 8, \JSON_THROW_ON_ERROR);
+        // PostgreSQL отдаёт json строкой, но драйверы вправе вернуть и поток
+        $json = is_resource($value) ? stream_get_contents($value) : $value;
 
-            return Strokes::fromArray($decoded);
+        if (!is_string($json)) {
+            throw InvalidType::new($value, self::NAME, ['string', 'resource']);
+        }
+
+        try {
+            return Strokes::fromArray(json_decode($json, true, 8, JSON_THROW_ON_ERROR));
         } catch (\JsonException|InvalidArgument $e) {
             // В базе лежит то, что домен считает невозможным — порча данных
-            throw ConversionException::conversionFailed('<json>', $this->getName(), $e);
+            throw ValueNotConvertible::new($json, self::NAME, $e->getMessage(), $e);
         }
     }
 
-    public function convertToDatabaseValue($value, AbstractPlatform $platform): ?string
+    public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): ?string
     {
         if (null === $value) {
             return null;
         }
 
         if (!$value instanceof Strokes) {
-            throw ConversionException::conversionFailedInvalidType($value, $this->getName(), [Strokes::class]);
+            throw InvalidType::new($value, self::NAME, [Strokes::class]);
         }
 
-        return json_encode($value->toArray(), \JSON_THROW_ON_ERROR | \JSON_PRESERVE_ZERO_FRACTION);
+        return json_encode($value->toArray(), JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
     }
 }

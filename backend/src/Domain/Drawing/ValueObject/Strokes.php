@@ -32,11 +32,11 @@ final readonly class Strokes implements \Countable
      */
     public static function of(array $lines): self
     {
-        if (\count($lines) > self::MAX_LINES) {
+        if (count($lines) > self::MAX_LINES) {
             throw new InvalidArgument(sprintf('Рисунок не может содержать больше %d линий', self::MAX_LINES), 'lines');
         }
 
-        return new self(array_values($lines));
+        return new self($lines);
     }
 
     /**
@@ -44,7 +44,7 @@ final readonly class Strokes implements \Countable
      */
     public static function fromArray(mixed $data): self
     {
-        if (!\is_array($data) || !array_is_list($data)) {
+        if (!is_array($data) || !array_is_list($data)) {
             throw new InvalidArgument('Линии рисунка передаются списком', 'lines');
         }
 
@@ -61,7 +61,7 @@ final readonly class Strokes implements \Countable
 
     public function count(): int
     {
-        return \count($this->lines);
+        return count($this->lines);
     }
 
     public function equals(self $other): bool
@@ -74,6 +74,6 @@ final readonly class Strokes implements \Countable
      */
     public function toArray(): array
     {
-        return array_map(static fn (Line $line) => $line->toArray(), $this->lines);
+        return array_map(static fn (Line $line): array => $line->toArray(), $this->lines);
     }
 }

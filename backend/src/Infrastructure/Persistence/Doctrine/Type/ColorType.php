@@ -7,6 +7,9 @@ namespace App\Infrastructure\Persistence\Doctrine\Type;
 use App\Domain\Note\ValueObject\Color;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 
+/**
+ * @extends StringValueObjectType<Color>
+ */
 final class ColorType extends StringValueObjectType
 {
     public const string NAME = 'note_color';

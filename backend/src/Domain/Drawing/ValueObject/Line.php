@@ -45,7 +45,7 @@ final readonly class Line
             throw new InvalidArgument('Линия должна содержать хотя бы одну точку', 'lines');
         }
 
-        if (\count($points) > self::MAX_POINTS) {
+        if (count($points) > self::MAX_POINTS) {
             throw new InvalidArgument(sprintf('Линия не может содержать больше %d точек', self::MAX_POINTS), 'lines');
         }
 
@@ -56,7 +56,7 @@ final readonly class Line
             );
         }
 
-        return new self($id, array_values($points), $color, $width);
+        return new self($id, $points, $color, $width);
     }
 
     /**
@@ -64,7 +64,7 @@ final readonly class Line
      */
     public static function fromArray(mixed $data): self
     {
-        if (!\is_array($data) || !\is_array($data['points'] ?? null)) {
+        if (!is_array($data) || !is_array($data['points'] ?? null)) {
             throw new InvalidArgument('Линия задаётся объектом {id, points, color, width}', 'lines');
         }
 
@@ -73,14 +73,14 @@ final readonly class Line
         }
 
         try {
-            $color = Color::fromString(\is_string($data['color'] ?? null) ? $data['color'] : '');
-        } catch (InvalidArgument $e) {
+            $color = Color::fromString(is_string($data['color'] ?? null) ? $data['color'] : '');
+        } catch (InvalidArgument) {
             // Снаружи это ошибка в поле lines, а не в отдельном поле color
             throw new InvalidArgument('Цвет линии задаётся в формате #rrggbb', 'lines');
         }
 
         return self::create(
-            id: \is_scalar($data['id'] ?? null) ? (string) $data['id'] : '',
+            id: is_scalar($data['id'] ?? null) ? (string) $data['id'] : '',
             points: array_map(Point::fromArray(...), array_values($data['points'])),
             color: $color,
             width: (float) $data['width'],
@@ -117,7 +117,7 @@ final readonly class Line
     {
         return [
             'id' => $this->id,
-            'points' => array_map(static fn (Point $point) => $point->toArray(), $this->points),
+            'points' => array_map(static fn (Point $point): array => $point->toArray(), $this->points),
             'color' => $this->color->toString(),
             'width' => $this->width,
         ];
