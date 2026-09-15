@@ -13,7 +13,7 @@ use Symfony\Component\HttpFoundation\Request;
 final readonly class JsonPayload
 {
     /**
-     * @param array<string, mixed> $data
+     * @param array<array-key, mixed> $data тело как есть; ключи проверяются при чтении
      */
     private function __construct(private array $data)
     {
@@ -28,26 +28,26 @@ final readonly class JsonPayload
         }
 
         try {
-            $decoded = json_decode($raw, true, 32, \JSON_THROW_ON_ERROR);
+            $decoded = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
             return new self([]);
         }
 
-        return new self(\is_array($decoded) ? $decoded : []);
+        return new self(is_array($decoded) ? $decoded : []);
     }
 
     public function string(string $key, string $default = ''): string
     {
         $value = $this->data[$key] ?? null;
 
-        return \is_scalar($value) ? (string) $value : $default;
+        return is_scalar($value) ? (string) $value : $default;
     }
 
     public function nullableString(string $key): ?string
     {
         $value = $this->data[$key] ?? null;
 
-        return \is_scalar($value) && '' !== (string) $value ? (string) $value : null;
+        return is_scalar($value) && '' !== (string) $value ? (string) $value : null;
     }
 
     public function int(string $key, int $default = 0): int
@@ -66,6 +66,6 @@ final readonly class JsonPayload
     {
         $value = $this->data[$key] ?? null;
 
-        return \is_array($value) && array_is_list($value) ? $value : [];
+        return is_array($value) && array_is_list($value) ? $value : [];
     }
 }

@@ -126,6 +126,10 @@ make sh            # shell в php-контейнере
 make migration     # сгенерировать миграцию из изменений маппинга
 make migrate       # применить миграции
 make test          # юнит-тесты домена (бэк + фронт)
+make lint          # бэкенд: стиль, статический анализ, рефакторинг — только проверка
+make cs            # php-cs-fixer: исправить стиль
+make stan          # phpstan, уровень max
+make rector        # rector: применить автоматический рефакторинг
 make schema-validate  # сверить XML-маппинг со схемой БД
 make psql          # psql в контейнере postgres
 make composer c="require symfony/mailer"
@@ -142,6 +146,20 @@ Swagger UI: <http://localhost:8080/api/doc>, спецификация OpenAPI 3 
 Операции описаны атрибутами `OpenApi\Attributes` прямо на контроллерах, общие
 схемы ответов и ошибок — в `backend/config/packages/nelmio_api_doc.yaml`.
 Из UI можно выполнять запросы к живому стеку.
+
+## Качество кода бэкенда
+
+Три инструмента, все в `require-dev`, конфиги в корне `backend/`:
+
+| Инструмент | Конфиг | Проверить | Исправить |
+| --- | --- | --- | --- |
+| php-cs-fixer (`@Symfony` + risky, strict_types) | `.php-cs-fixer.dist.php` | `make cs-check` | `make cs` |
+| PHPStan, уровень `max`, расширения Symfony/Doctrine/PHPUnit | `phpstan.dist.neon` | `make stan` | — |
+| Rector, наборы PHP 8.5, качество кода, типы, атрибуты | `rector.php` | `make rector-check` | `make rector` |
+
+`make lint` запускает все три проверки подряд и ничего не меняет — это то,
+что стоит прогнать перед коммитом. Порядок правок: `make rector`, затем
+`make cs`, затем `make stan`. Кэши инструментов лежат в `backend/var/cache/`.
 
 ## Отладка бэкенда
 

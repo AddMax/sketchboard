@@ -33,7 +33,7 @@ final readonly class Point
      */
     public static function fromArray(mixed $data): self
     {
-        if (!\is_array($data) || !is_numeric($data['x'] ?? null) || !is_numeric($data['y'] ?? null)) {
+        if (!is_array($data) || !is_numeric($data['x'] ?? null) || !is_numeric($data['y'] ?? null)) {
             throw new InvalidArgument('Точка задаётся объектом {x, y} с числовыми координатами', 'lines');
         }
 

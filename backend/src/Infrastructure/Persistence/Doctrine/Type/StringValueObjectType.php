@@ -6,7 +6,8 @@ namespace App\Infrastructure\Persistence\Doctrine\Type;
 
 use App\Domain\Shared\InvalidArgument;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Types\ConversionException;
+use Doctrine\DBAL\Types\Exception\InvalidType;
+use Doctrine\DBAL\Types\Exception\ValueNotConvertible;
 use Doctrine\DBAL\Types\Type;
 
 /**
@@ -18,6 +19,12 @@ use Doctrine\DBAL\Types\Type;
 abstract class StringValueObjectType extends Type
 {
     /**
+     * Имя типа в конфиге Doctrine; DBAL 4 сам его больше не спрашивает,
+     * но в сообщениях об ошибках оно нужно.
+     */
+    abstract public function getName(): string;
+
+    /**
      * @return T
      */
     abstract protected function fromDatabase(string $value): \Stringable;
@@ -27,7 +34,10 @@ abstract class StringValueObjectType extends Type
      */
     abstract protected function valueObjectClass(): string;
 
-    public function convertToPHPValue($value, AbstractPlatform $platform): ?\Stringable
+    /**
+     * @return T|null
+     */
+    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): ?\Stringable
     {
         if (null === $value) {
             return null;
@@ -37,26 +47,29 @@ abstract class StringValueObjectType extends Type
             return $value;
         }
 
+        if (!is_string($value) && !$value instanceof \Stringable) {
+            throw InvalidType::new($value, $this->getName(), ['string', $this->valueObjectClass()]);
+        }
+
         try {
             return $this->fromDatabase((string) $value);
         } catch (InvalidArgument $e) {
             // В базе лежит то, что домен считает невозможным — это порча данных,
             // а не ошибка пользователя
-            throw ConversionException::conversionFailed((string) $value, $this->getName(), $e);
+            throw ValueNotConvertible::new((string) $value, $this->getName(), $e->getMessage(), $e);
         }
     }
 
-    public function convertToDatabaseValue($value, AbstractPlatform $platform): ?string
+    public function convertToDatabaseValue(mixed $value, AbstractPlatform $platform): ?string
     {
         if (null === $value) {
             return null;
         }
 
-        return (string) $value;
-    }
+        if (!$value instanceof \Stringable) {
+            throw InvalidType::new($value, $this->getName(), [$this->valueObjectClass()]);
+        }
 
-    public function requiresSQLCommentHint(AbstractPlatform $platform): bool
-    {
-        return true;
+        return (string) $value;
     }
 }

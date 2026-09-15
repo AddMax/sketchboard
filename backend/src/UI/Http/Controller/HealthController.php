@@ -46,11 +46,11 @@ final readonly class HealthController
     public function __invoke(): JsonResponse
     {
         $checks = [
-            'php' => \PHP_VERSION,
+            'php' => PHP_VERSION,
             'symfony' => Kernel::VERSION,
-            'postgres' => $this->probe(fn () => $this->connection->executeQuery('SELECT 1')->fetchOne()),
-            'redis' => $this->probe(fn () => $this->redis->ping()),
-            'centrifugo' => $this->probe(fn () => $this->centrifugo->presenceCount($this->realtimeChannel)),
+            'postgres' => $this->probe(fn (): mixed => $this->connection->executeQuery('SELECT 1')->fetchOne()),
+            'redis' => $this->probe(fn (): \Redis|string|bool => $this->redis->ping()),
+            'centrifugo' => $this->probe(fn (): int => $this->centrifugo->presenceCount($this->realtimeChannel)),
         ];
 
         $healthy = 'ok' === $checks['postgres']

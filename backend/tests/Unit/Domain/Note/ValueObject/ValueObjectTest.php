@@ -21,20 +21,20 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(NoteId::class)]
 final class ValueObjectTest extends TestCase
 {
-    public function testТекстОбрезаетсяПоКраям(): void
+    public function testTextIsTrimmed(): void
     {
         self::assertSame('текст', NoteText::fromString("  текст \n")->toString());
     }
 
-    #[DataProvider('недопустимыйТекст')]
-    public function testПустойИлиСлишкомДлинныйТекстНеПринимается(string $value, string $ожидаемоеПоле): void
+    #[DataProvider('invalidTextProvider')]
+    public function testEmptyOrTooLongTextIsRejected(string $value, string $expectedField): void
     {
         $this->expectException(InvalidArgument::class);
 
         try {
             NoteText::fromString($value);
         } catch (InvalidArgument $e) {
-            self::assertSame($ожидаемоеПоле, $e->field());
+            self::assertSame($expectedField, $e->field());
 
             throw $e;
         }
@@ -43,20 +43,20 @@ final class ValueObjectTest extends TestCase
     /**
      * @return iterable<string, array{string, string}>
      */
-    public static function недопустимыйТекст(): iterable
+    public static function invalidTextProvider(): iterable
     {
         yield 'пустая строка' => ['', 'text'];
         yield 'только пробелы' => ["   \t\n", 'text'];
         yield 'длиннее предела' => [str_repeat('я', NoteText::MAX_LENGTH + 1), 'text'];
     }
 
-    public function testЦветПриводитсяКНижнемуРегистру(): void
+    public function testColorIsLowercased(): void
     {
         self::assertSame('#06d6a0', Color::fromString('#06D6A0')->toString());
     }
 
-    #[DataProvider('недопустимыйЦвет')]
-    public function testНекорректныйЦветНеПринимается(string $value): void
+    #[DataProvider('invalidColorProvider')]
+    public function testMalformedColorIsRejected(string $value): void
     {
         $this->expectException(InvalidArgument::class);
 
@@ -66,22 +66,22 @@ final class ValueObjectTest extends TestCase
     /**
      * @return iterable<string, array{string}>
      */
-    public static function недопустимыйЦвет(): iterable
+    public static function invalidColorProvider(): iterable
     {
         yield 'без решётки' => ['06d6a0'];
         yield 'сокращённая запись' => ['#fff'];
         yield 'название цвета' => ['красный'];
     }
 
-    #[DataProvider('координатыВнеДоски')]
-    public function testКоординатыЗаПределамиДоскиНеПринимаются(int $x, int $y, string $поле): void
+    #[DataProvider('coordinatesOutsideBoardProvider')]
+    public function testCoordinatesOutsideBoardAreRejected(int $x, int $y, string $field): void
     {
         $this->expectException(InvalidArgument::class);
 
         try {
             Position::at($x, $y);
         } catch (InvalidArgument $e) {
-            self::assertSame($поле, $e->field());
+            self::assertSame($field, $e->field());
 
             throw $e;
         }
@@ -90,31 +90,31 @@ final class ValueObjectTest extends TestCase
     /**
      * @return iterable<string, array{int, int, string}>
      */
-    public static function координатыВнеДоски(): iterable
+    public static function coordinatesOutsideBoardProvider(): iterable
     {
         yield 'отрицательный x' => [-1, 0, 'x'];
         yield 'слишком большой y' => [0, Position::MAX + 1, 'y'];
     }
 
-    public function testОдинаковыеКоординатыРавны(): void
+    public function testEqualCoordinatesAreEqual(): void
     {
         self::assertTrue(Position::at(5, 7)->equals(Position::at(5, 7)));
         self::assertFalse(Position::at(5, 7)->equals(Position::at(7, 5)));
     }
 
-    public function testАвторПоУмолчаниюАнонимен(): void
+    public function testDefaultAuthorIsAnonymous(): void
     {
         self::assertSame('anonymous', Author::anonymous()->toString());
     }
 
-    public function testИдентификаторПроверяетФормат(): void
+    public function testIdValidatesFormat(): void
     {
         $this->expectException(InvalidArgument::class);
 
         NoteId::fromString('не-uuid');
     }
 
-    public function testИдентификаторВосстанавливаетсяИзСтроки(): void
+    public function testIdIsRestoredFromString(): void
     {
         $id = NoteId::generate();
 

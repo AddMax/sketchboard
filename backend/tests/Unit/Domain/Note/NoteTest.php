@@ -19,7 +19,7 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(Note::class)]
 final class NoteTest extends TestCase
 {
-    public function testСозданиеЗаписываетСобытие(): void
+    public function testCreationRecordsEvent(): void
     {
         $note = $this->note();
 
@@ -30,7 +30,7 @@ final class NoteTest extends TestCase
         self::assertSame('note.created', $events[0]->eventName());
     }
 
-    public function testСобытияОтдаютсяТолькоОдинРаз(): void
+    public function testEventsAreReleasedOnlyOnce(): void
     {
         $note = $this->note();
 
@@ -39,7 +39,7 @@ final class NoteTest extends TestCase
         self::assertSame([], $note->releaseEvents());
     }
 
-    public function testПеремещениеМеняетКоординатыИЗаписываетСобытие(): void
+    public function testMovingChangesPositionAndRecordsEvent(): void
     {
         $note = $this->note();
         $note->releaseEvents();
@@ -53,7 +53,7 @@ final class NoteTest extends TestCase
         self::assertSame(150, $note->position()->y());
     }
 
-    public function testПеремещениеНаТоЖеМестоСобытияНеПорождает(): void
+    public function testMovingToSamePlaceRecordsNoEvent(): void
     {
         $note = $this->note();
         $note->releaseEvents();
@@ -63,7 +63,7 @@ final class NoteTest extends TestCase
         self::assertSame([], $note->releaseEvents(), 'Подписчиков не нужно тревожить без изменений');
     }
 
-    public function testУдалениеЗаписываетСобытиеСИдентификатором(): void
+    public function testDeletionRecordsEventWithId(): void
     {
         $note = $this->note();
         $note->releaseEvents();

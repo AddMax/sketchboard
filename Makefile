@@ -4,7 +4,7 @@ PHP := $(DC) exec -T php
 NODE := $(DC) exec -T frontend
 
 .DEFAULT_GOAL := help
-.PHONY: help init up down destroy restart build logs ps sh sh-node psql redis-cli migration migrate schema-validate cache-clear composer npm test test-back test-front health xdebug-on xdebug-off xdebug-status
+.PHONY: help init up down destroy restart build logs ps sh sh-node psql redis-cli migration migrate schema-validate cache-clear composer npm test test-back test-front health xdebug-on xdebug-off xdebug-status lint cs cs-check stan rector rector-check
 
 help: ## Список доступных команд
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -79,6 +79,24 @@ npm: ## npm c=<аргументы>, например: make npm c="install axios"
 
 schema-validate: ## Сверить XML-маппинг домена со схемой БД
 	$(PHP) php bin/console doctrine:schema:validate
+
+lint: cs-check stan rector-check ## Проверить бэкенд: стиль, статический анализ, рефакторинг (без правок)
+
+cs: ## Исправить стиль кода бэкенда (php-cs-fixer)
+	$(PHP) vendor/bin/php-cs-fixer fix
+
+cs-check: ## Показать нарушения стиля, ничего не менять
+	$(PHP) vendor/bin/php-cs-fixer fix --dry-run --diff
+
+stan: ## Статический анализ бэкенда (phpstan, уровень max)
+	@$(PHP) test -f var/cache/dev/App_KernelDevDebugContainer.xml || $(PHP) php bin/console cache:warmup -q
+	$(PHP) vendor/bin/phpstan analyse --memory-limit=1G
+
+rector: ## Применить автоматический рефакторинг (rector)
+	$(PHP) vendor/bin/rector process
+
+rector-check: ## Показать, что изменил бы rector, ничего не менять
+	$(PHP) vendor/bin/rector process --dry-run
 
 test: test-back test-front ## Прогнать тесты домена на бэке и фронте
 

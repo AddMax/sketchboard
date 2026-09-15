@@ -21,14 +21,14 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(Point::class)]
 final class DrawingTest extends TestCase
 {
-    public function testНовыйРисунокПуст(): void
+    public function testNewDrawingIsEmpty(): void
     {
         $drawing = Drawing::startFor(NoteId::generate());
 
         self::assertCount(0, $drawing->strokes());
     }
 
-    public function testЗаменаШтриховОбновляетСодержимоеИВремя(): void
+    public function testReplacingStrokesUpdatesContentAndTime(): void
     {
         $started = new \DateTimeImmutable('2026-09-10 10:00:00');
         $drawing = Drawing::startFor(NoteId::generate(), $started);
@@ -40,7 +40,7 @@ final class DrawingTest extends TestCase
         self::assertGreaterThan($started, $drawing->updatedAt());
     }
 
-    public function testПовторТогоЖеСостоянияНеДвигаетВремя(): void
+    public function testRepeatingSameStateKeepsTime(): void
     {
         $drawing = Drawing::startFor(NoteId::generate());
         $drawing->replaceStrokes(Strokes::of([$this->line('a')]), new \DateTimeImmutable('2026-09-10 10:05:00'));
@@ -51,7 +51,7 @@ final class DrawingTest extends TestCase
         self::assertEquals($before, $drawing->updatedAt(), 'Ретрай клиента — не изменение');
     }
 
-    public function testШтрихиВосстанавливаютсяИзМассиваБезПотерь(): void
+    public function testStrokesRoundTripThroughArray(): void
     {
         $raw = [
             ['id' => 'l1', 'points' => [['x' => 1.5, 'y' => -2], ['x' => 3, 'y' => 4]], 'color' => '#FF0000', 'width' => 4],
@@ -65,8 +65,8 @@ final class DrawingTest extends TestCase
         );
     }
 
-    #[DataProvider('недопустимыеЛинии')]
-    public function testНекорректнаяЛинияНеПринимается(mixed $raw): void
+    #[DataProvider('invalidLinesProvider')]
+    public function testMalformedLineIsRejected(mixed $raw): void
     {
         $this->expectException(InvalidArgument::class);
 
@@ -82,7 +82,7 @@ final class DrawingTest extends TestCase
     /**
      * @return iterable<string, array{mixed}>
      */
-    public static function недопустимыеЛинии(): iterable
+    public static function invalidLinesProvider(): iterable
     {
         $ok = ['id' => 'l1', 'points' => [['x' => 0, 'y' => 0]], 'color' => '#000000', 'width' => 2];
 
@@ -98,11 +98,11 @@ final class DrawingTest extends TestCase
         yield 'слишком много линий' => [array_fill(0, Strokes::MAX_LINES + 1, $ok)];
     }
 
-    public function testБесконечнаяКоординатаНеПринимается(): void
+    public function testInfiniteCoordinateIsRejected(): void
     {
         $this->expectException(InvalidArgument::class);
 
-        Point::at(\INF, 0);
+        Point::at(INF, 0);
     }
 
     private function line(string $id): Line

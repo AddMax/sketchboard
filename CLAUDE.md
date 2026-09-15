@@ -20,6 +20,8 @@ make migration / migrate   # создать миграцию из маппинг
 make cache-clear
 make composer c="require ..."   # make npm c="install ..."
 make xdebug-on / xdebug-off    # Xdebug выключен по умолчанию; переключение пересоздаёт php
+make lint                  # бэкенд: cs-check + stan + rector-check, ничего не меняет
+make rector && make cs     # применить рефакторинг и стиль — именно в этом порядке
 ```
 
 Профайлер Symfony: <http://localhost:8080/_profiler/>, у каждого ответа API есть
@@ -29,7 +31,7 @@ make xdebug-on / xdebug-off    # Xdebug выключен по умолчанию
 Один тест:
 
 ```bash
-docker compose exec -T php vendor/bin/phpunit --filter testПеремещениеНаТоЖеМесто
+docker compose exec -T php vendor/bin/phpunit --filter testMovingToSamePlaceRecordsNoEvent
 docker compose exec -T frontend npx vitest run -t "не дублирует"
 docker compose exec -T frontend npm run typecheck
 ```
@@ -182,10 +184,35 @@ php-fpm живёт один запрос и соединения держать 
   но после `composer require` или правки `config/services.yaml` бывает нужен
   `make cache-clear`.
 
+## Качество кода бэкенда
+
+`make lint` должен быть зелёным перед коммитом. Три инструмента, конфиги в `backend/`:
+
+- **php-cs-fixer** (`.php-cs-fixer.dist.php`): `@Symfony` + `@Symfony:risky`,
+  `declare(strict_types=1)`. Встроенные функции и константы **без** ведущего `\`
+  (`native_*_invocation` с пустым `include` и `strict`, у констант ещё
+  `fix_built_in: false`, иначе слэш вернётся). Отключено `single_line_throw`;
+  `no_homoglyph_names` включено — поэтому кириллицы в идентификаторах быть
+  не должно: правило молча подменяло бы буквы латинскими двойниками.
+- **PHPStan** (`phpstan.dist.neon`): уровень `max`, `src` и `tests`. Расширение
+  Symfony читает `var/cache/dev/App_KernelDevDebugContainer.xml` — `make stan`
+  прогреет кэш сам, если его нет. Doctrine-расширение без objectManagerLoader:
+  анализ не должен требовать базы.
+- **Rector** (`rector.php`): наборы PHP 8.5, codeQuality, typeDeclarations,
+  deadCode, privatization, earlyReturn и атрибуты Symfony/Doctrine/PHPUnit.
+  Отключены правила, сортирующие именованные аргументы (схлопывают атрибуты
+  OpenAPI в одну строку) и `PreferPHPUnitThisCallRector` (в тестах `self::assert…`).
+  Rector переписывает изменённые узлы целиком и теряет переносы строк — после
+  него всегда `make cs`.
+- Что уже нашли: в DBAL 4 нет `ConversionException::conversionFailed()`, поэтому
+  типы Doctrine бросают `ValueNotConvertible::new()` и `InvalidType::new()`.
+
 ## Конвенции
 
-- Комментарии и сообщения об ошибках — по-русски, включая имена тестовых методов.
-  Комментарий объясняет **почему**, а не пересказывает код.
+- Комментарии, сообщения об ошибках и подписи тестов на фронтенде (`it('…')`) —
+  по-русски. Идентификаторы, включая имена тестовых методов на бэкенде, —
+  по-английски в camelCase (`testMovingToSamePlaceRecordsNoEvent`, провайдеры
+  данных — `…Provider`). Комментарий объясняет **почему**, а не пересказывает код.
 - Стили — классы в SCSS, а не инлайн и не утилиты в разметке. Исключение уже
   в коде: цвет стикера приходит из данных, поэтому он идёт через `style`.
   Величины не хардкодить — в `_tokens.scss`.
