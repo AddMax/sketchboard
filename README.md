@@ -1,7 +1,9 @@
 # Sketchboard
 
 Скелет full-stack приложения: общая доска стикеров, где изменения одного
-пользователя мгновенно появляются у остальных.
+пользователя мгновенно появляются у остальных, а к каждому стикеру
+прикреплена бесконечная доска для рисования. Исходная постановка задачи —
+в `promt.md`, контекст для работы с кодом — в `CLAUDE.md`.
 
 ## Стек
 
@@ -12,7 +14,7 @@
 | Realtime | Centrifugo 6 — WebSocket-сервер | `centrifugo/centrifugo:v6.9` (alpine) |
 | БД | PostgreSQL 18 | `postgres:18-alpine` |
 | Кэш и шина событий | Redis 8 | `redis:8-alpine` |
-| Фронтенд | React 19 + Vite + SCSS | `node:24-alpine` |
+| Фронтенд | React 19 + MobX 7 + Vite + SCSS | `node:24-alpine` |
 
 ## Как это связано
 
@@ -80,7 +82,7 @@ docker compose up -d --build
 Готовность видно по логам:
 
 ```bash
-docker compose logs -f php frontend websocket
+docker compose logs -f php frontend centrifugo
 ```
 
 Приложение: <http://localhost:8080>
@@ -125,7 +127,8 @@ make logs          # логи всех сервисов
 make sh            # shell в php-контейнере
 make migration     # сгенерировать миграцию из изменений маппинга
 make migrate       # применить миграции
-make test          # юнит-тесты домена (бэк + фронт)
+make test          # юнит-тесты (бэк + фронт); make test-back / test-front — по отдельности
+make health        # состояние стека через /api/health
 make lint          # бэкенд: стиль, статический анализ, рефакторинг — только проверка
 make cs            # php-cs-fixer: исправить стиль
 make stan          # phpstan, уровень max
@@ -136,6 +139,8 @@ make composer c="require symfony/mailer"
 make npm c="install zustand"
 make xdebug-on     # включить пошаговую отладку (пересоздаёт контейнер php)
 make xdebug-off
+make xdebug-status # текущий режим Xdebug
+make npm c="run typecheck"   # проверка типов фронтенда
 make destroy       # снести окружение вместе с данными
 ```
 
@@ -230,7 +235,7 @@ Connections*. Имя сервера уже передано в контейне�
             ↓
       Домен                   →  агрегаты, объекты-значения, события
             ↑
-      Инфраструктура          →  адаптеры портов: Doctrine, Redis, WebSocket, fetch
+      Инфраструктура          →  адаптеры портов: Doctrine, HTTP API Centrifugo, centrifuge-js, fetch
 ```
 
 ### Бэкенд
@@ -244,56 +249,96 @@ backend/src/
       ValueObject/            NoteId, NoteText, Position, Color, Author
       Event/                  NoteWasCreated, NoteWasMoved, NoteWasDeleted
       Exception/NoteNotFound.php
+    Drawing/
+      Drawing.php             рисунок заметки: отдельный агрегат с тем же идентификатором
+      DrawingRepository.php   порт хранилища
+      ValueObject/            Strokes (все штрихи целиком), Line, Point
     Shared/                   DomainEvent, InvalidArgument
   Application/                сценарии, знают домен и порты — больше ничего
     Note/Command/…            CreateNote, MoveNote, DeleteNote (+ Handler)
     Note/Query/ListNotes/
     Note/ReadModel/NoteView.php
-    Shared/Port/DomainEventPublisher.php
-    Shared/Port/RealtimeAccess.php
+    Drawing/Command/SaveDrawing/
+    Drawing/Query/GetDrawing/
+    Drawing/ReadModel/DrawingView.php
     Realtime/Query/IssueRealtimeAccess/
+    Shared/Port/              DomainEventPublisher, RealtimeAccess, RealtimeCredentials
   Infrastructure/             адаптеры портов
-    Persistence/Doctrine/     репозиторий, DBAL-типы, XML-маппинг
-    Realtime/                 сериализация событий для клиентов
+    Persistence/Doctrine/     репозитории, DBAL-типы (в том числе StrokesType — JSON), XML-маппинг
+    Realtime/                 DomainEventSerializer: форма сообщения для клиентов
     Realtime/Centrifugo/      HTTP API, публикация событий, выдача JWT
   UI/
-    Http/Controller/          тонкие контроллеры
+    Http/Controller/          по классу на маршрут: Note/, Drawing/, Realtime/, HealthController
+    Http/JsonPayload.php      разбор тела запроса
     Http/EventListener/       доменные исключения → коды HTTP
 ```
 
 Инварианты стерегут объекты-значения, а не аннотации валидатора: пустой
 текст, цвет вне формата `#rrggbb` и координата за пределами полотна просто
-не могут существовать. `symfony/validator` поэтому в зависимостях не нужен —
-контроллеру достаточно поймать `InvalidArgument` и ответить 422.
+не могут существовать. `symfony/validator` поэтому в зависимостях не нужен:
+`DomainExceptionListener` в одном месте превращает `InvalidArgument` в 422,
+а `NoteNotFound` — в 404, контроллеры исключений не ловят.
+
+Рисунок — отдельный агрегат, а не поле заметки: заметка при каждом
+изменении летает по realtime-каналу целиком, а рисунок может весить сотни
+килобайт. Он хранится одним JSON-документом и всегда заменяется целиком,
+событий не порождает и по каналу не рассылается. Связь между агрегатами
+держит `DeleteNoteHandler`, а не внешний ключ: удаляя заметку, он удаляет
+и рисунок.
 
 Маппинг Doctrine вынесен в XML (`Infrastructure/Persistence/Doctrine/Mapping`),
-чтобы агрегат остался свободен от атрибутов ORM. Схема таблицы `notes` от
-этого не изменилась: `make schema-validate` подтверждает совпадение.
+чтобы агрегаты остались свободны от атрибутов ORM. Таблиц две — `notes` и
+`drawings`; `make schema-validate` подтверждает совпадение маппинга со схемой.
 
 ### Фронтенд
 
 ```
 frontend/src/
   domain/
-    note/Note.ts              правила заметки (те же, что на сервере)
+    note/Note.ts              правила заметки (те же, что на сервере), errors.ts — DomainError
     board/Board.ts            applyRealtimeEvent — чистая функция состояния доски
+    drawing/Drawing.ts        типы штриха и пределы кисти
+    drawing/Viewport.ts       математика вьюпорта: pan, zoom к курсору, видимая область, шаг сетки
     realtime/RealtimeEvent.ts типы событий и разбор входящих сообщений
   application/
-    ports/                    NoteRepository, RealtimeChannel
-    board/useBoard.ts         сценарий доски
-    board/BoardDependencies.tsx   проброс адаптеров через контекст
+    ports/                    NoteRepository, DrawingRepository, RealtimeChannel, RealtimeAccessProvider
+    board/BoardStore.ts       MobX-стор доски: загрузка, события канала, команды
+    drawing/DrawingStore.ts   MobX-стор рисунка заметки: штрихи, отложенное сохранение, статус
+    Stores.tsx                сборка сторов из адаптеров и контекст для компонентов
+    Dependencies.ts           набор адаптеров, из которого собираются сторы
+    shared/debounce.ts        дебаунс без React — им пользуется стор
+    shared/describeError.ts   текст ошибки для человека
   infrastructure/
-    http/HttpNoteRepository.ts        адаптер REST
+    config.ts                 переменные окружения сборки, адрес WebSocket
+    http/jsonRequest.ts       общий вызов JSON API; 422 → DomainError
+    http/HttpNoteRepository.ts, HttpDrawingRepository.ts   адаптеры REST
     http/HttpRealtimeAccessProvider.ts   получение токена подключения
     realtime/CentrifugoRealtimeChannel.ts адаптер поверх centrifuge-js
     container.ts              композиционный корень
-  ui/                         компоненты, не знающие о транспорте
-  ui/styles/                  SCSS: токены, миксины и стили по блокам
+  ui/
+    pages/                    BoardPage, DrawingPage
+    routing/                  routes.ts (разбор пути), RouterStore, Link — свой роутер на History API
+    components/               доска, карточка заметки с кнопкой-карандашом, композер, статус
+    components/canvas/        InfiniteCanvas — наблюдает за DrawingStore
+    identity.ts               имя участника в localStorage (авторизации нет)
+    styles/                   SCSS: токены, миксины и стили по блокам
 ```
 
-Компоненты получают адаптеры через контекст, поэтому в тестах на место
-`NoteRepository` встаёт объект в памяти, а логика доски проверяется без
-React и сети.
+Состоянием управляет MobX: сторы в `application/` хранят наблюдаемое
+состояние и все действия над ним, компоненты обёрнуты в `observer` и
+только читают сторы и вызывают их методы. Сторы собираются в композиционном
+корне из адаптеров портов и приходят в компоненты через контекст, поэтому
+в тестах на место репозиториев и канала встают объекты в памяти, а сценарии
+доски и рисунка проверяются без React и сети. Правила заметки, разбор
+маршрутов и математика вьюпорта — чистые функции.
+
+Полотно для рисования (`InfiniteCanvas`) держит вьюпорт и текущий штрих
+в ref: во время движения мыши сегменты рисуются прямо в контекст Canvas,
+React перерисовывается только по завершении штриха. Готовый штрих полотно
+отдаёт в `DrawingStore`, а тот отправляет рисунок на сервер через полторы
+секунды после последнего штриха; при уходе со страницы отложенный вызов
+выполняется сразу. Статус («Сохранено», «Сохранение…», «Ошибка сохранения»)
+показан в углу полотна.
 
 Переход с самописного WebSocket-сервера на Centrifugo это наглядно
 подтвердил: поменялись только адаптеры по обе стороны — порты
@@ -307,14 +352,18 @@ make test          # домен бэкенда и фронтенда
 ```
 
 Обе группы работают без базы, Redis и контейнера — это и есть проверка того,
-что домен ни от чего не зависит: 34 теста PHP и 25 тестов TS за миллисекунды.
+что домен ни от чего не зависит: 34 теста PHP (`backend/tests/Unit/`: агрегаты
+`Note` и `Drawing`, объекты-значения) и 37 тестов TS (`frontend/tests/`:
+правила заметки, состояние доски, сторы доски и рисунка с адаптерами в памяти,
+разбор маршрутов, математика вьюпорта) за миллисекунды. Интеграционных
+тестов нет.
 
 ## Проверено
 
 Стек поднят с нуля и проверен сквозным сценарием:
 
 - `GET /api/health` → `{"status":"ok","php":"8.5.10","symfony":"8.1.6",
-  "postgres":"ok","redis":"ok"}`;
+  "postgres":"ok","redis":"ok","centrifugo":"ok"}`;
 - `POST /api/notes` пишет в PostgreSQL, и событие `note.created` приходит
   в браузер по WebSocket; то же для `note.moved` и `note.deleted`;
 - эфемерное событие (`cursor`) от одного клиента доходит до другого, минуя
@@ -326,7 +375,10 @@ make test          # домен бэкенда и фронтенда
   заметка → 404; перемещение «на то же место» события не порождает;
 - HMR Vite работает через тот же прокси: правка `App.tsx` доезжает
   как `js-update`;
-- миграции применяются автоматически при старте php-контейнера.
+- миграции применяются автоматически при старте php-контейнера;
+- рисунок сохраняется через `PUT /api/notes/{id}/drawing` и возвращается при
+  повторном открытии страницы; лишняя линия сверх лимита или цвет вне
+  формата → 422.
 
 ## Что стоит изменить перед продакшеном
 
@@ -343,3 +395,9 @@ make test          # домен бэкенда и фронтенда
 - Публиковать в канал разрешено любому подписчику (`allow_publish_for_subscriber`) —
   это нужно для курсоров. Если клиентские публикации не потребуются,
   опцию стоит выключить.
+- Рисунок не синхронизируется между участниками в realtime: каждый видит
+  его при открытии страницы, а при одновременном редактировании побеждает
+  последнее сохранение.
+- Профайлер, Swagger UI, Twig и `symfony/asset` стоят в `require-dev` и
+  включаются только в `dev`; Xdebug собран в образ, но выключен переменной
+  `XDEBUG_MODE`. В боевом образе их не должно быть вовсе.

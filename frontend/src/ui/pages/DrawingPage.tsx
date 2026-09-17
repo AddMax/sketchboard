@@ -1,4 +1,7 @@
-import { useDrawing } from '../../application/drawing/useDrawing'
+import { observer } from 'mobx-react-lite'
+import { useEffect, useState } from 'react'
+import type { DrawingStore } from '../../application/drawing/DrawingStore'
+import { useStores } from '../../application/Stores'
 import type { Note } from '../../domain/note/Note'
 import { InfiniteCanvas } from '../components/canvas/InfiniteCanvas'
 import { Link } from '../routing/Link'
@@ -8,7 +11,7 @@ import { BOARD_PATH } from '../routing/routes'
  * Страница доски для рисования, привязанная к заметке: шапка с возвратом
  * и полотно, которое появляется, когда сохранённые штрихи загружены.
  */
-export function DrawingPage({
+export const DrawingPage = observer(function DrawingPage({
   noteId,
   note,
   loaded,
@@ -35,27 +38,35 @@ export function DrawingPage({
           Заметка не найдена — возможно, её уже удалили.
         </p>
       ) : (
-        <DrawingBoard noteId={noteId} />
+        <DrawingBoard key={noteId} noteId={noteId} />
       )}
     </main>
   )
-}
+})
 
-function DrawingBoard({ noteId }: { noteId: string }) {
-  const { lines, error, save } = useDrawing(noteId)
+/** key по noteId выше: новая заметка — новый стор и новое полотно, а не мутация старых. */
+const DrawingBoard = observer(function DrawingBoard({ noteId }: { noteId: string }) {
+  const { openDrawing } = useStores()
+  const [drawing] = useState<DrawingStore>(() => openDrawing(noteId))
 
-  if (error !== null) {
+  useEffect(() => {
+    void drawing.load()
+
+    // Уход со страницы отправляет отложенное сохранение сразу
+    return () => drawing.dispose()
+  }, [drawing])
+
+  if (drawing.loadError !== null) {
     return (
       <p className="drawing__missing" role="alert">
-        Не удалось загрузить рисунок: {error}
+        Не удалось загрузить рисунок: {drawing.loadError}
       </p>
     )
   }
 
-  if (lines === null) {
+  if (!drawing.loaded) {
     return <p className="drawing__loading">Загружаем рисунок…</p>
   }
 
-  // key: новая заметка — новое полотно с её штрихами, а не мутация старого
-  return <InfiniteCanvas key={noteId} initialLines={lines} onSave={save} />
-}
+  return <InfiniteCanvas drawing={drawing} />
+})

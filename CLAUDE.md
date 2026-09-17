@@ -3,8 +3,9 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Sketchboard — realtime-доска заметок. Скелет проекта: Symfony 8.1 на PHP 8.5,
-PostgreSQL 18, Redis 8, React 19, Centrifugo 6, всё за nginx в Docker.
-Описание для людей — в `README.md`; здесь то, что экономит время при работе с кодом.
+PostgreSQL 18, Redis 8, React 19 + MobX 7, Centrifugo 6, всё за nginx в Docker.
+Описание для людей — в `README.md`, исходная постановка задачи — в `promt.md`;
+здесь то, что экономит время при работе с кодом.
 
 ## Команды
 
@@ -14,7 +15,8 @@ PostgreSQL 18, Redis 8, React 19, Centrifugo 6, всё за nginx в Docker.
 make init                  # первый запуск: .env, секреты, сборка, старт, миграции
 make up / down / destroy   # destroy сносит и данные
 make logs                  # логи всех сервисов
-make test                  # тесты: 34 на бэке, 25 на фронте
+make test                  # тесты: 34 на бэке, 37 на фронте (test-back / test-front — по отдельности)
+make health                # /api/health: статусы PostgreSQL, Redis и Centrifugo
 make schema-validate       # сверить XML-маппинг Doctrine со схемой БД
 make migration / migrate   # создать миграцию из маппинга / применить
 make cache-clear
@@ -28,7 +30,9 @@ make rector && make cs     # применить рефакторинг и сти
 `X-Debug-Token-Link`. Как настроить IDE под Xdebug — в README, раздел «Отладка».
 Документация API: <http://localhost:8080/api/doc> (Swagger UI), `/api/doc.json` — OpenAPI.
 
-Один тест:
+Тесты лежат в `backend/tests/Unit/` (PHPUnit 12, атрибут `#[DataProvider]`)
+и `frontend/tests/*.test.ts` (Vitest; сторы проверяются с адаптерами в памяти
+и фальшивыми таймерами, без React и jsdom). Один тест:
 
 ```bash
 docker compose exec -T php vendor/bin/phpunit --filter testMovingToSamePlaceRecordsNoEvent
@@ -36,8 +40,8 @@ docker compose exec -T frontend npx vitest run -t "не дублирует"
 docker compose exec -T frontend npm run typecheck
 ```
 
-Проверка живого стека: `curl -s localhost:8080/api/health` — отвечает статусами
-PostgreSQL, Redis и Centrifugo сразу.
+Проверка живого стека: `make health` или `curl -s localhost:8080/api/health` —
+отвечает статусами PostgreSQL, Redis и Centrifugo сразу; любой сбой — 503.
 
 ## Архитектура
 
@@ -56,7 +60,7 @@ UI → Application → Domain, а Infrastructure подключается к Dom
 | `Domain/` | чистый PHP. Ни `use Symfony\…`, ни `use Doctrine\…`, ни атрибутов ORM |
 | `Application/` | сценарии «команда + хендлер», порты, read-модели |
 | `Infrastructure/` | единственное место, где живут Doctrine, Centrifugo, HTTP-клиент |
-| `UI/` | разобрать запрос → вызвать хендлер → отдать JSON. **Один маршрут — один класс** с `__invoke`, каталоги по контексту: `Controller/Note/`, `Controller/Drawing/`, `Controller/Realtime/` |
+| `UI/` | разобрать запрос → вызвать хендлер → отдать JSON. **Один маршрут — один класс** с `__invoke`, каталоги по контексту: `Controller/Note/`, `Controller/Drawing/`, `Controller/Realtime/`. Тело запроса читает `Http/JsonPayload` (`string`, `int`, `list`…) без проверок — что внутри, решает домен |
 
 - Инварианты стерегут объекты-значения (`NoteText`, `Position`, `Color`, `Author`),
   а не валидатор: `symfony/validator` намеренно не установлен. VO бросают
@@ -72,8 +76,10 @@ UI → Application → Domain, а Infrastructure подключается к Dom
   Связь между агрегатами держит `DeleteNoteHandler`, а не внешний ключ.
 - Маппинг Doctrine — XML в `Infrastructure/Persistence/Doctrine/Mapping/`.
   Имя файла кодирует FQCN относительно префикса `App\Domain`:
-  `App\Domain\Note\Note` → `Note.Note.orm.xml`. Ошибиться легко, симптом —
-  «Class 'App\Domain\Note' does not exist».
+  `App\Domain\Note\Note` → `Note.Note.orm.xml`, embeddable `Position` →
+  `Note.ValueObject.Position.orm.xml`. Ошибиться легко, симптом —
+  «Class 'App\Domain\Note' does not exist». Таблиц две: `notes` и `drawings`,
+  без внешнего ключа между ними.
 - Документация API — атрибуты `OpenApi\Attributes` (`OA\Get`, `OA\RequestBody`,
   `OA\Response`…) на `__invoke` контроллера, тег `OA\Tag` на классе. Путь и метод
   Nelmio берёт из `#[Route]`, дублировать не нужно. Переиспользуемые схемы
@@ -91,9 +97,31 @@ UI → Application → Domain, а Infrastructure подключается к Dom
 Те же слои: `domain/` (правила заметки, чистая функция `applyRealtimeEvent`,
 типы рисунка и математика вьюпорта `Viewport.ts`), `application/` (порты
 `NoteRepository`, `DrawingRepository`, `RealtimeChannel`, `RealtimeAccessProvider`
-и сценарии `useBoard`, `useDrawing`), `infrastructure/` (адаптеры + `container.ts` —
+и MobX-сторы `BoardStore`, `DrawingStore`; `Stores.tsx` собирает их из адаптеров
+и раздаёт через контекст), `infrastructure/` (адаптеры + `container.ts` —
 единственное место, где выбираются реализации), `ui/` (компоненты, страницы,
 маршрутизация).
+
+**Состояние — только в MobX.** Прикладное состояние живёт в сторах
+(`makeAutoObservable` с `autoBind`), компоненты обёрнуты в `observer` и
+состояние не меняют — вызывают действия стора. Локальное состояние
+формы или панели (черновик текста, кисть, режим сдвига) — `useLocalObservable`,
+не `useState`; `useState` остаётся только для хранения экземпляра стора
+(`DrawingBoard`). Текущий экран — `ui/routing/RouterStore` (`route`, `navigate`).
+
+- Доска одна на приложение, стор рисунка — на страницу: `Stores.openDrawing(noteId)`
+  создаёт новый, `DrawingBoard` держит его в `useState`, а `key={noteId}` выше
+  гарантирует новый стор при смене заметки. При размонтировании `dispose()`
+  отправляет отложенное сохранение сразу.
+- Массивы заметок и штрихов аннотированы `observableRef`: доска и рисунок
+  заменяются целиком, а глубокое наблюдение за десятками тысяч точек
+  оборачивало бы их в прокси. Меняя список, присваивайте новый массив.
+- После `await` действие MobX уже закончилось — изменения оборачивать в
+  `runInAction` (иначе предупреждение о strict-mode в консоли).
+- **MobX 7 переименовал пространственные аннотации**: `observable.ref` →
+  `observableRef`, `observable.shallow` → `observableShallow`, `action.bound` →
+  `actionBound`. Старые формы не проходят typecheck и падают в рантайме
+  с «Invalid annotation».
 
 Интерфейс — свои компоненты; библиотеки готовых компонентов нет. Экранов два —
 доска заметок (`/`) и доска для рисования по заметке (`/notes/{id}/draw`), —
@@ -127,10 +155,15 @@ ui/styles/
 - Правила заметки продублированы с бэкендом намеренно (ответить до сетевого
   запроса), но последнее слово за сервером. Меняя инвариант, правьте оба места.
 - Полотно `ui/components/canvas/InfiniteCanvas.tsx` держит вьюпорт, текущий
-  штрих и размеры в ref, а не в стейте: во время движения мыши сегменты идут
-  прямо в контекст, React рендерится только по завершении штриха. Сохранение —
-  через `useDebouncedCallback` (1,5 с после последнего штриха, flush при
-  размонтировании). Пределы кисти и числа линий совпадают с `Domain\Drawing`.
+  штрих и размеры в ref, а не в наблюдаемом состоянии: во время движения мыши
+  сегменты идут прямо в контекст, React рендерится только по завершении штриха.
+  Полотну нужен объект с интерфейсом `CanvasDocument` (`lines`, `saveStatus`,
+  `replaceLines`, `retrySave`) — ему соответствует `DrawingStore`. Сохранение
+  живёт в сторе: `application/shared/debounce.ts` (1,5 с после последнего
+  штриха, flush в `dispose()`). Лимит числа линий (5 000) совпадает с `Domain\Drawing`;
+  диапазон кисти на клиенте (1–24) намеренно уже серверного (0,5–100) —
+  это пределы ползунка, а не правило домена, и рассинхрон с сервером
+  при их смене не страшен, пока клиент остаётся внутри серверных границ.
 
 ### Realtime
 
@@ -219,6 +252,9 @@ php-fpm живёт один запрос и соединения держать 
 - Новый сценарий: DTO команды + хендлер в `Application/<Контекст>/Command/<Имя>/`,
   вызов из контроллера напрямую (командной шины нет — хендлеры инжектятся как сервисы).
   Контроллер — отдельный файл на маршрут, с OpenAPI-атрибутами (см. «Бэкенд»).
+  Авторегистрация в `services.yaml` исключает из контейнера `**/ReadModel/`,
+  `*Command.php` и `*Query.php` по имени — DTO с другим суффиксом станет
+  сервисом и упадёт на автовайринге скалярных аргументов.
 - Новый порт: интерфейс в `Application/Shared/Port/`, реализация в `Infrastructure/`,
   связка — явной строкой в `backend/config/services.yaml`.
 - `.env` не в репозитории; при добавлении переменной обновляйте `.env.example`.
@@ -231,6 +267,7 @@ php-fpm живёт один запрос и соединения держать 
 авторизации нет (имя участника приходит от клиента и ничем не подтверждается,
 место для проверки — `IssueRealtimeAccessHandler`); фронтенд отдаётся Vite
 dev-сервером, продакшен-сборки в стеке нет; интеграционных тестов нет, только
-юнит-тесты домена, разбора маршрутов и математики вьюпорта; рисунок не
+юнит-тесты домена, сторов, разбора маршрутов и математики вьюпорта, компоненты
+React тестами не покрыты; рисунок не
 синхронизируется между участниками в realtime — каждый видит его при открытии
 страницы, а побеждает последнее сохранение.
