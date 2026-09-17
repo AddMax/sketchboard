@@ -1,14 +1,22 @@
-import { useBoard } from '../application/board/useBoard'
+import { observer } from 'mobx-react-lite'
+import { useEffect } from 'react'
+import { useStores } from '../application/Stores'
 import { ConnectionStatus } from './components/ConnectionStatus'
 import { BoardPage } from './pages/BoardPage'
 import { DrawingPage } from './pages/DrawingPage'
 import { Link } from './routing/Link'
 import { BOARD_PATH } from './routing/routes'
-import { useRoute } from './routing/useRoute'
+import { useRouter } from './routing/RouterStore'
 
-export function App({ author }: { author: string }) {
-  const state = useBoard()
-  const route = useRoute()
+export const App = observer(function App({ author }: { author: string }) {
+  const { board } = useStores()
+  const router = useRouter()
+
+  // Доска и роутер живут, пока смонтировано приложение: подписки снимаются вместе с ним
+  useEffect(() => board.start(), [board])
+  useEffect(() => router.start(), [router])
+
+  const { route } = router
 
   return (
     <div className="app">
@@ -19,22 +27,22 @@ export function App({ author }: { author: string }) {
           </Link>
         </h1>
         <ConnectionStatus
-          state={state.connection}
-          clients={state.clients}
+          state={board.connection}
+          clients={board.clients}
           author={author}
-          onPing={() => state.ping(author)}
+          onPing={() => board.ping(author)}
         />
       </header>
 
       {route.kind === 'draw' ? (
         <DrawingPage
           noteId={route.noteId}
-          note={state.board.find((note) => note.id === route.noteId)}
-          loaded={state.loaded}
+          note={board.notes.find((note) => note.id === route.noteId)}
+          loaded={board.loaded}
         />
       ) : (
-        <BoardPage state={state} author={author} />
+        <BoardPage board={board} author={author} />
       )}
     </div>
   )
-}
+})

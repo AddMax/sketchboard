@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { runInAction } from 'mobx'
+import { observer, useLocalObservable } from 'mobx-react-lite'
+import { useCallback, useEffect, useRef } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
+import type { SaveStatus } from '../../../application/drawing/DrawingStore'
 import {
   BRUSH_WIDTH_MAX,
   BRUSH_WIDTH_MIN,
@@ -17,17 +20,21 @@ import {
   zoomAt,
 } from '../../../domain/drawing/Viewport'
 import type { Viewport } from '../../../domain/drawing/Viewport'
-import { useDebouncedCallback } from './useDebouncedCallback'
 
-export type SaveStatus = 'saved' | 'saving' | 'error'
+/**
+ * То, что полотну нужно от владельца рисунка. Интерфейс структурный:
+ * ему соответствует DrawingStore, а в тестах — любой наблюдаемый объект.
+ */
+export interface CanvasDocument {
+  readonly lines: readonly DrawingLine[]
+  readonly saveStatus: SaveStatus
+  /** Полный список штрихов после изменения; когда сохранять — решает владелец. */
+  replaceLines(lines: DrawingLine[]): void
+  retrySave(): void
+}
 
 export interface InfiniteCanvasProps {
-  /** Сохранённые штрихи. Читаются один раз при монтировании: смена доски — смена key. */
-  initialLines: DrawingLine[]
-  /** Отправка полного списка штрихов; вызывается с задержкой после последнего штриха. */
-  onSave: (lines: DrawingLine[]) => Promise<void>
-  /** Пауза между последним штрихом и сохранением. */
-  saveDelayMs?: number
+  drawing: CanvasDocument
 }
 
 const COLOR_PRESETS: ReadonlyArray<{ value: string; label: string }> = [
@@ -83,59 +90,46 @@ interface Drag {
  * идёт движение мыши, сегменты рисуются прямо в контекст — перерисовка
  * всей доски случается только при сдвиге, зуме, ресайзе и завершении штриха.
  */
-export function InfiniteCanvas({ initialLines, onSave, saveDelayMs = 1500 }: InfiniteCanvasProps) {
+export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: InfiniteCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  const [lines, setLines] = useState<DrawingLine[]>(initialLines)
-  const [color, setColor] = useState(COLOR_PRESETS[0].value)
-  const [width, setWidth] = useState(DEFAULT_WIDTH)
-  const [zoomPercent, setZoomPercent] = useState(100)
-  const [status, setStatus] = useState<SaveStatus>('saved')
-  const [panMode, setPanMode] = useState<PanMode>('none')
+  // Состояние панели — локальное: кисть, масштаб для индикатора и режим сдвига.
+  // Меняется редко (по клику, по завершении жеста), поэтому ему можно быть наблюдаемым
+  const tools = useLocalObservable(() => ({
+    color: COLOR_PRESETS[0].value,
+    width: DEFAULT_WIDTH,
+    zoomPercent: 100,
+    panMode: 'none' as PanMode,
+    setColor(value: string) {
+      this.color = value
+    },
+    setWidth(value: number) {
+      this.width = value
+    },
+    setZoom(zoom: number) {
+      this.zoomPercent = Math.round(zoom * 100)
+    },
+    setPanMode(mode: PanMode) {
+      this.panMode = mode
+    },
+  }))
 
-  const linesRef = useRef(lines)
+  const { lines } = drawing
+
+  const linesRef = useRef<readonly DrawingLine[]>(lines)
   const viewRef = useRef<Viewport>(initialViewport)
   const strokeRef = useRef<Stroke | null>(null)
   const dragRef = useRef<Drag | null>(null)
   const spaceHeldRef = useRef(false)
   const frameRef = useRef<number | null>(null)
-  const brushRef = useRef({ color, width })
-  const onSaveRef = useRef(onSave)
-  const saveSequenceRef = useRef(0)
-
-  brushRef.current = { color, width }
-  onSaveRef.current = onSave
-
-  // ── Сохранение ────────────────────────────────────────────────────────
-
-  const persist = useCallback((snapshot: DrawingLine[]) => {
-    // Ответы могут прийти не по порядку: статус выставляет только последний запрос
-    const sequence = ++saveSequenceRef.current
-
-    setStatus('saving')
-
-    onSaveRef
-      .current(snapshot)
-      .then(() => {
-        if (sequence === saveSequenceRef.current) setStatus('saved')
-      })
-      .catch(() => {
-        if (sequence === saveSequenceRef.current) setStatus('error')
-      })
-  }, [])
-
-  const debouncedSave = useDebouncedCallback(persist, saveDelayMs)
 
   const commitLines = useCallback(
     (next: DrawingLine[]) => {
       linesRef.current = next
-      setLines(next)
-      // «Сохранение…» показываем сразу: изменения уже есть, на сервере их ещё нет
-      setStatus('saving')
-      debouncedSave.schedule(next)
+      drawing.replaceLines(next)
     },
-    [debouncedSave],
+    [drawing],
   )
 
   // ── Отрисовка ─────────────────────────────────────────────────────────
@@ -255,10 +249,10 @@ export function InfiniteCanvas({ initialLines, onSave, saveDelayMs = 1500 }: Inf
   const setView = useCallback(
     (view: Viewport) => {
       viewRef.current = view
-      setZoomPercent(Math.round(view.zoom * 100))
+      tools.setZoom(view.zoom)
       scheduleRedraw()
     },
-    [scheduleRedraw],
+    [scheduleRedraw, tools],
   )
 
   // ── Размер полотна ────────────────────────────────────────────────────
@@ -364,7 +358,7 @@ export function InfiniteCanvas({ initialLines, onSave, saveDelayMs = 1500 }: Inf
     const onPointerUp = () => {
       if (dragRef.current !== null) {
         dragRef.current = null
-        setPanMode(spaceHeldRef.current ? 'ready' : 'none')
+        tools.setPanMode(spaceHeldRef.current ? 'ready' : 'none')
       }
 
       const stroke = strokeRef.current
@@ -383,7 +377,7 @@ export function InfiniteCanvas({ initialLines, onSave, saveDelayMs = 1500 }: Inf
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerUp)
     }
-  }, [applyView, commitLines, setView, toWorld])
+  }, [applyView, commitLines, setView, toWorld, tools])
 
   // ── Пробел: режим панорамирования ─────────────────────────────────────
 
@@ -396,20 +390,25 @@ export function InfiniteCanvas({ initialLines, onSave, saveDelayMs = 1500 }: Inf
 
       event.preventDefault()
       spaceHeldRef.current = true
-      setPanMode((mode) => (mode === 'panning' ? mode : 'ready'))
+      // Идущий сдвиг средней кнопкой пробел не прерывает
+      runInAction(() => {
+        if (tools.panMode !== 'panning') tools.panMode = 'ready'
+      })
     }
 
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.code !== 'Space') return
 
       spaceHeldRef.current = false
-      setPanMode((mode) => (mode === 'panning' ? mode : 'none'))
+      runInAction(() => {
+        if (tools.panMode !== 'panning') tools.panMode = 'none'
+      })
     }
 
     // Переключение вкладки во время зажатого пробела: keyup не придёт
     const onBlur = () => {
       spaceHeldRef.current = false
-      setPanMode('none')
+      tools.setPanMode('none')
     }
 
     window.addEventListener('keydown', onKeyDown)
@@ -421,7 +420,7 @@ export function InfiniteCanvas({ initialLines, onSave, saveDelayMs = 1500 }: Inf
       window.removeEventListener('keyup', onKeyUp)
       window.removeEventListener('blur', onBlur)
     }
-  }, [])
+  }, [tools])
 
   // Отложенный кадр не должен пережить компонент. Ref обязательно обнуляем:
   // StrictMode перезапускает эффекты, и с «висящим» id scheduleRedraw
@@ -447,7 +446,7 @@ export function InfiniteCanvas({ initialLines, onSave, saveDelayMs = 1500 }: Inf
         startClient: { x: event.clientX, y: event.clientY },
         startView: viewRef.current,
       }
-      setPanMode('panning')
+      tools.setPanMode('panning')
       return
     }
 
@@ -455,10 +454,9 @@ export function InfiniteCanvas({ initialLines, onSave, saveDelayMs = 1500 }: Inf
     if (linesRef.current.length >= DRAWING_MAX_LINES) return
 
     const point = roundPoint(toWorld(event.clientX, event.clientY))
-    const { color: strokeColor, width: strokeWidth } = brushRef.current
 
     strokeRef.current = {
-      line: { id: newLineId(), points: [point], color: strokeColor, width: strokeWidth },
+      line: { id: newLineId(), points: [point], color: tools.color, width: tools.width },
       last: point,
     }
 
@@ -484,19 +482,14 @@ export function InfiniteCanvas({ initialLines, onSave, saveDelayMs = 1500 }: Inf
     setView(zoomAt(viewRef.current, { x: rect.width / 2, y: rect.height / 2 }, 1 / viewRef.current.zoom))
   }
 
-  const retrySave = () => {
-    if (status === 'error') {
-      debouncedSave.cancel()
-      persist(linesRef.current)
-    }
-  }
-
   // Готовые линии изменились — перерисовать (в том числе после «Очистить всё»)
   useEffect(() => {
     linesRef.current = lines
     scheduleRedraw()
   }, [lines, scheduleRedraw])
 
+  const { panMode, color, width, zoomPercent } = tools
+  const status = drawing.saveStatus
   const modifier = panMode === 'panning' ? 'canvas--grabbing' : panMode === 'ready' ? 'canvas--grab' : ''
 
   return (
@@ -521,7 +514,7 @@ export function InfiniteCanvas({ initialLines, onSave, saveDelayMs = 1500 }: Inf
               title={preset.label}
               className={`canvas__swatch ${color === preset.value ? 'canvas__swatch--active' : ''}`.trim()}
               style={{ background: preset.value }}
-              onClick={() => setColor(preset.value)}
+              onClick={() => tools.setColor(preset.value)}
             />
           ))}
         </div>
@@ -536,7 +529,7 @@ export function InfiniteCanvas({ initialLines, onSave, saveDelayMs = 1500 }: Inf
             max={BRUSH_WIDTH_MAX}
             step={1}
             value={width}
-            onChange={(event) => setWidth(Number(event.target.value))}
+            onChange={(event) => tools.setWidth(Number(event.target.value))}
             aria-label="Толщина кисти"
           />
           <output className="canvas__width-value">{width}</output>
@@ -568,7 +561,7 @@ export function InfiniteCanvas({ initialLines, onSave, saveDelayMs = 1500 }: Inf
       <button
         type="button"
         className={`canvas__status canvas__status--${status}`}
-        onClick={retrySave}
+        onClick={drawing.retrySave}
         disabled={status !== 'error'}
         aria-live="polite"
       >
@@ -578,4 +571,4 @@ export function InfiniteCanvas({ initialLines, onSave, saveDelayMs = 1500 }: Inf
       <p className="canvas__hint">Колесо — масштаб, Пробел + мышь или средняя кнопка — сдвиг</p>
     </div>
   )
-}
+})
