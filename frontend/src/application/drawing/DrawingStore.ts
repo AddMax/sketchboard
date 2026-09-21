@@ -1,5 +1,5 @@
 import { makeAutoObservable, observableRef, runInAction } from 'mobx'
-import type { DrawingLine } from '../../domain/drawing/Drawing'
+import type { DrawingElement } from '../../domain/drawing/Drawing'
 import type { DrawingRepository } from '../ports/DrawingRepository'
 import { Debounce } from '../shared/debounce'
 import { describeError } from '../shared/describeError'
@@ -10,19 +10,19 @@ export type SaveStatus = 'saved' | 'saving' | 'error'
 export const SAVE_DELAY_MS = 1500
 
 /**
- * Рисунок одной заметки: загрузка, текущий список штрихов и отложенное
- * сохранение. Полотно только рисует и сообщает новый список линий —
- * когда и что отправлять, решает стор.
+ * Рисунок одной заметки: загрузка, текущий список элементов (штрихов и
+ * фигур) и отложенное сохранение. Полотно только рисует и сообщает новый
+ * список — когда и что отправлять, решает стор.
  */
 export class DrawingStore {
-  /** Штрихи целиком: список заменяется, а не мутируется. */
-  lines: DrawingLine[] = []
+  /** Элементы целиком: список заменяется, а не мутируется. */
+  elements: DrawingElement[] = []
   /** Рисунок загружен — полотно нельзя показывать пустым раньше времени. */
   loaded = false
   loadError: string | null = null
   saveStatus: SaveStatus = 'saved'
 
-  private readonly save: Debounce<[DrawingLine[]]>
+  private readonly save: Debounce<[DrawingElement[]]>
   /** Ответы могут прийти не по порядку: статус выставляет только последний запрос. */
   private saveSequence = 0
 
@@ -31,10 +31,10 @@ export class DrawingStore {
     private readonly drawings: DrawingRepository,
     saveDelayMs: number = SAVE_DELAY_MS,
   ) {
-    this.save = new Debounce((snapshot: DrawingLine[]) => this.persist(snapshot), saveDelayMs)
+    this.save = new Debounce((snapshot: DrawingElement[]) => this.persist(snapshot), saveDelayMs)
 
-    // Линий тысячи, точек в них — десятки тысяч: наблюдаем ссылку на массив,
-    // а не каждую точку, иначе MobX оборачивал бы весь рисунок в прокси
+    // Элементов тысячи, точек в штрихах — десятки тысяч: наблюдаем ссылку на
+    // массив, а не каждую точку, иначе MobX оборачивал бы весь рисунок в прокси
     makeAutoObservable<this, 'drawings' | 'save' | 'saveSequence' | 'persist'>(
       this,
       {
@@ -43,7 +43,7 @@ export class DrawingStore {
         save: false,
         saveSequence: false,
         persist: false,
-        lines: observableRef,
+        elements: observableRef,
       },
       { autoBind: true },
     )
@@ -54,7 +54,7 @@ export class DrawingStore {
       const loaded = await this.drawings.load(this.noteId)
 
       runInAction(() => {
-        this.lines = loaded
+        this.elements = loaded
         this.loaded = true
       })
     } catch (cause) {
@@ -64,9 +64,9 @@ export class DrawingStore {
     }
   }
 
-  /** Новый список штрихов: показать сразу, сохранить с задержкой. */
-  replaceLines(next: DrawingLine[]): void {
-    this.lines = next
+  /** Новый список элементов: показать сразу, сохранить с задержкой. */
+  replaceElements(next: DrawingElement[]): void {
+    this.elements = next
     // «Сохранение…» показываем сразу: изменения уже есть, на сервере их ещё нет
     this.saveStatus = 'saving'
     this.save.schedule(next)
@@ -76,7 +76,7 @@ export class DrawingStore {
     if (this.saveStatus !== 'error') return
 
     this.save.cancel()
-    this.persist(this.lines)
+    this.persist(this.elements)
   }
 
   /**
@@ -87,7 +87,7 @@ export class DrawingStore {
     this.save.flush()
   }
 
-  private persist(snapshot: DrawingLine[]): void {
+  private persist(snapshot: DrawingElement[]): void {
     const sequence = ++this.saveSequence
 
     runInAction(() => {

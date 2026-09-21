@@ -7,6 +7,7 @@ $note-min-height: 130px;
 $note-action-size: 26px;
 $topbar-height: 57px;
 $canvas-swatch-size: 24px;
+$canvas-tool-size: 30px;
 $canvas-slider-width: 90px;
 
 $radius-control: 8px;
@@ -30,6 +31,8 @@ $sticker-lilac: #c8b6ff;
 
 :root {
   --color-accent: #{$sticker-sky};
+  // Подложка активного инструмента: акцент, разбавленный до фона
+  --color-accent-soft: #{rgba($sticker-sky, 0.12)};
   --color-canvas: #f5f6f8;
   --color-surface: #ffffff;
   --color-ink: #1b1d22;
@@ -43,6 +46,7 @@ $sticker-lilac: #c8b6ff;
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --color-accent-soft: #{rgba($sticker-sky, 0.28)};
     --color-canvas: #14161a;
     --color-surface: #1d2026;
     --color-ink: #e8eaee;

@@ -44,6 +44,28 @@
     gap: 6px;
   }
 
+  &__tool {
+    @include m.control;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: t.$canvas-tool-size;
+    height: t.$canvas-tool-size;
+    padding: 0;
+    color: var(--color-ink);
+
+    &:hover {
+      border-color: var(--color-accent);
+    }
+
+    &--active {
+      color: var(--color-accent);
+      border-color: var(--color-accent);
+      background: var(--color-accent-soft);
+    }
+  }
+
   &__swatch {
     width: t.$canvas-swatch-size;
     height: t.$canvas-swatch-size;

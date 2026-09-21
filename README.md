@@ -114,8 +114,8 @@ ip link show $(ip route get 1.1.1.1 | awk '{print $5; exit}')   # смотрит
 | POST | `/api/notes` | создать заметку |
 | PATCH | `/api/notes/{id}/position` | переместить заметку |
 | DELETE | `/api/notes/{id}` | удалить заметку (вместе с рисунком) |
-| GET | `/api/notes/{id}/drawing` | штрихи рисунка заметки (пустой список, если не рисовали) |
-| PUT | `/api/notes/{id}/drawing` | сохранить рисунок целиком: `{"lines": [{id, points, color, width}]}` |
+| GET | `/api/notes/{id}/drawing` | элементы рисунка заметки — штрихи и фигуры (пустой список, если не рисовали) |
+| PUT | `/api/notes/{id}/drawing` | сохранить рисунок целиком: `{"elements": [{type: "line", id, points, color, width} \| {type: "shape", id, kind, x, y, width, height, strokeColor, strokeWidth, fill}]}` |
 | GET | `/api/realtime/access` | токен подключения и имя канала |
 | GET | `/ws` | WebSocket Centrifugo (проксируется в `/connection/websocket`) |
 
@@ -252,7 +252,7 @@ backend/src/
     Drawing/
       Drawing.php             рисунок заметки: отдельный агрегат с тем же идентификатором
       DrawingRepository.php   порт хранилища
-      ValueObject/            Strokes (все штрихи целиком), Line, Point
+      ValueObject/            Elements (все элементы целиком), Element, Line, Shape, ShapeKind, Point
     Shared/                   DomainEvent, InvalidArgument
   Application/                сценарии, знают домен и порты — больше ничего
     Note/Command/…            CreateNote, MoveNote, DeleteNote (+ Handler)
@@ -264,7 +264,7 @@ backend/src/
     Realtime/Query/IssueRealtimeAccess/
     Shared/Port/              DomainEventPublisher, RealtimeAccess, RealtimeCredentials
   Infrastructure/             адаптеры портов
-    Persistence/Doctrine/     репозитории, DBAL-типы (в том числе StrokesType — JSON), XML-маппинг
+    Persistence/Doctrine/     репозитории, DBAL-типы (в том числе ElementsType — JSON), XML-маппинг
     Realtime/                 DomainEventSerializer: форма сообщения для клиентов
     Realtime/Centrifugo/      HTTP API, публикация событий, выдача JWT
   UI/
@@ -297,13 +297,13 @@ frontend/src/
   domain/
     note/Note.ts              правила заметки (те же, что на сервере), errors.ts — DomainError
     board/Board.ts            applyRealtimeEvent — чистая функция состояния доски
-    drawing/Drawing.ts        типы штриха и пределы кисти
+    drawing/Drawing.ts        типы штриха и фигуры, пределы кисти, shapeBetween — фигура по двум углам
     drawing/Viewport.ts       математика вьюпорта: pan, zoom к курсору, видимая область, шаг сетки
     realtime/RealtimeEvent.ts типы событий и разбор входящих сообщений
   application/
     ports/                    NoteRepository, DrawingRepository, RealtimeChannel, RealtimeAccessProvider
     board/BoardStore.ts       MobX-стор доски: загрузка, события канала, команды
-    drawing/DrawingStore.ts   MobX-стор рисунка заметки: штрихи, отложенное сохранение, статус
+    drawing/DrawingStore.ts   MobX-стор рисунка заметки: элементы, отложенное сохранение, статус
     Stores.tsx                сборка сторов из адаптеров и контекст для компонентов
     Dependencies.ts           набор адаптеров, из которого собираются сторы
     shared/debounce.ts        дебаунс без React — им пользуется стор
@@ -319,7 +319,7 @@ frontend/src/
     pages/                    BoardPage, DrawingPage
     routing/                  routes.ts (разбор пути), RouterStore, Link — свой роутер на History API
     components/               доска, карточка заметки с кнопкой-карандашом, композер, статус
-    components/canvas/        InfiniteCanvas — наблюдает за DrawingStore
+    components/canvas/        InfiniteCanvas — наблюдает за DrawingStore; ToolIcons — пиктограммы инструментов
     identity.ts               имя участника в localStorage (авторизации нет)
     styles/                   SCSS: токены, миксины и стили по блокам
 ```
@@ -332,13 +332,15 @@ frontend/src/
 доски и рисунка проверяются без React и сети. Правила заметки, разбор
 маршрутов и математика вьюпорта — чистые функции.
 
-Полотно для рисования (`InfiniteCanvas`) держит вьюпорт и текущий штрих
-в ref: во время движения мыши сегменты рисуются прямо в контекст Canvas,
-React перерисовывается только по завершении штриха. Готовый штрих полотно
-отдаёт в `DrawingStore`, а тот отправляет рисунок на сервер через полторы
-секунды после последнего штриха; при уходе со страницы отложенный вызов
-выполняется сразу. Статус («Сохранено», «Сохранение…», «Ошибка сохранения»)
-показан в углу полотна.
+Полотно для рисования (`InfiniteCanvas`) держит вьюпорт, текущий штрих и
+растягиваемую фигуру в ref: во время движения мыши сегменты штриха рисуются
+прямо в контекст Canvas, React перерисовывается только по завершении жеста.
+Кроме кисти в панели есть прямоугольник, эллипс и треугольник: фигура
+растягивается мышью в любую сторону, Shift держит пропорции, Esc отменяет.
+Готовый штрих или фигуру полотно отдаёт в `DrawingStore`, а тот отправляет
+рисунок на сервер через полторы секунды после последнего изменения; при
+уходе со страницы отложенный вызов выполняется сразу. Статус («Сохранено»,
+«Сохранение…», «Ошибка сохранения») показан в углу полотна.
 
 Переход с самописного WebSocket-сервера на Centrifugo это наглядно
 подтвердил: поменялись только адаптеры по обе стороны — порты
@@ -352,11 +354,11 @@ make test          # домен бэкенда и фронтенда
 ```
 
 Обе группы работают без базы, Redis и контейнера — это и есть проверка того,
-что домен ни от чего не зависит: 34 теста PHP (`backend/tests/Unit/`: агрегаты
-`Note` и `Drawing`, объекты-значения) и 37 тестов TS (`frontend/tests/`:
-правила заметки, состояние доски, сторы доски и рисунка с адаптерами в памяти,
-разбор маршрутов, математика вьюпорта) за миллисекунды. Интеграционных
-тестов нет.
+что домен ни от чего не зависит: 50 тестов PHP (`backend/tests/Unit/`: агрегаты
+`Note` и `Drawing`, объекты-значения, разбор штрихов и фигур) и 42 теста TS
+(`frontend/tests/`: правила заметки, состояние доски, геометрия фигур, сторы
+доски и рисунка с адаптерами в памяти, разбор маршрутов, математика вьюпорта)
+за миллисекунды. Интеграционных тестов нет.
 
 ## Проверено
 
@@ -378,7 +380,10 @@ make test          # домен бэкенда и фронтенда
 - миграции применяются автоматически при старте php-контейнера;
 - рисунок сохраняется через `PUT /api/notes/{id}/drawing` и возвращается при
   повторном открытии страницы; лишняя линия сверх лимита или цвет вне
-  формата → 422.
+  формата → 422;
+- фигура и штрих без `type` сохраняются одним запросом и возвращаются в том
+  же порядке, штрих получает `type: line`; неизвестный вид фигуры → 422 с
+  перечнем допустимых.
 
 ## Что стоит изменить перед продакшеном
 

@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DrawingStore } from '../src/application/drawing/DrawingStore'
 import type { DrawingRepository } from '../src/application/ports/DrawingRepository'
-import type { DrawingLine } from '../src/domain/drawing/Drawing'
+import type { DrawingElement, DrawingLine } from '../src/domain/drawing/Drawing'
 
 const line = (id: string): DrawingLine => ({
+  type: 'line',
   id,
   points: [{ x: 0, y: 0 }],
   color: '#000000',
@@ -12,19 +13,19 @@ const line = (id: string): DrawingLine => ({
 
 /** Хранилище в памяти, которому можно велеть падать на сохранении. */
 class InMemoryDrawings implements DrawingRepository {
-  readonly saved: DrawingLine[][] = []
+  readonly saved: DrawingElement[][] = []
   failing = false
 
-  constructor(private readonly stored: DrawingLine[] = []) {}
+  constructor(private readonly stored: DrawingElement[] = []) {}
 
-  async load(): Promise<DrawingLine[]> {
+  async load(): Promise<DrawingElement[]> {
     return [...this.stored]
   }
 
-  async save(_noteId: string, lines: DrawingLine[]): Promise<void> {
+  async save(_noteId: string, elements: DrawingElement[]): Promise<void> {
     if (this.failing) throw new Error('сеть')
 
-    this.saved.push(lines)
+    this.saved.push(elements)
   }
 }
 
@@ -39,7 +40,7 @@ describe('стор рисунка', () => {
     vi.useRealTimers()
   })
 
-  it('загружает штрихи и отмечает готовность', async () => {
+  it('загружает элементы и отмечает готовность', async () => {
     const store = new DrawingStore('n1', new InMemoryDrawings([line('a')]), DELAY)
 
     expect(store.loaded).toBe(false)
@@ -47,16 +48,16 @@ describe('стор рисунка', () => {
     await store.load()
 
     expect(store.loaded).toBe(true)
-    expect(store.lines.map((l) => l.id)).toEqual(['a'])
+    expect(store.elements.map((e) => e.id)).toEqual(['a'])
   })
 
   it('серию быстрых штрихов сохраняет одним запросом с последним состоянием', async () => {
     const drawings = new InMemoryDrawings()
     const store = new DrawingStore('n1', drawings, DELAY)
 
-    store.replaceLines([line('a')])
+    store.replaceElements([line('a')])
     await vi.advanceTimersByTimeAsync(DELAY / 2)
-    store.replaceLines([line('a'), line('b')])
+    store.replaceElements([line('a'), line('b')])
 
     expect(store.saveStatus).toBe('saving')
     expect(drawings.saved).toHaveLength(0)
@@ -73,7 +74,7 @@ describe('стор рисунка', () => {
     drawings.failing = true
     const store = new DrawingStore('n1', drawings, DELAY)
 
-    store.replaceLines([line('a')])
+    store.replaceElements([line('a')])
     await vi.advanceTimersByTimeAsync(DELAY)
 
     expect(store.saveStatus).toBe('error')
@@ -90,7 +91,7 @@ describe('стор рисунка', () => {
     const drawings = new InMemoryDrawings()
     const store = new DrawingStore('n1', drawings, DELAY)
 
-    store.replaceLines([line('a')])
+    store.replaceElements([line('a')])
     store.dispose()
     await vi.advanceTimersByTimeAsync(0)
 

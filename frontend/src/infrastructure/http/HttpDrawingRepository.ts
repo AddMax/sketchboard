@@ -1,10 +1,10 @@
 import type { DrawingRepository } from '../../application/ports/DrawingRepository'
-import type { DrawingLine } from '../../domain/drawing/Drawing'
+import type { DrawingElement } from '../../domain/drawing/Drawing'
 import { jsonRequest } from './jsonRequest'
 
 interface DrawingBody {
   noteId: string
-  lines: DrawingLine[]
+  elements: DrawingElement[]
   updatedAt: string | null
 }
 
@@ -12,16 +12,16 @@ interface DrawingBody {
 export class HttpDrawingRepository implements DrawingRepository {
   constructor(private readonly baseUrl: string) {}
 
-  async load(noteId: string): Promise<DrawingLine[]> {
-    const { lines } = await jsonRequest<DrawingBody>(this.url(noteId))
+  async load(noteId: string): Promise<DrawingElement[]> {
+    const { elements } = await jsonRequest<DrawingBody>(this.url(noteId))
 
-    return lines
+    return elements
   }
 
-  async save(noteId: string, lines: DrawingLine[]): Promise<void> {
+  async save(noteId: string, elements: DrawingElement[]): Promise<void> {
     await jsonRequest<DrawingBody>(this.url(noteId), {
       method: 'PUT',
-      body: JSON.stringify({ lines }),
+      body: JSON.stringify({ elements }),
     })
   }
 

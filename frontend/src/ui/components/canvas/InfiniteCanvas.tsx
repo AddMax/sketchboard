@@ -6,11 +6,12 @@ import type { SaveStatus } from '../../../application/drawing/DrawingStore'
 import {
   BRUSH_WIDTH_MAX,
   BRUSH_WIDTH_MIN,
-  DRAWING_MAX_LINES,
-  newLineId,
+  DRAWING_MAX_ELEMENTS,
+  newElementId,
   roundPoint,
+  shapeBetween,
 } from '../../../domain/drawing/Drawing'
-import type { DrawingLine, Point } from '../../../domain/drawing/Drawing'
+import type { DrawingElement, DrawingLine, Point, Shape } from '../../../domain/drawing/Drawing'
 import {
   gridStep,
   initialViewport,
@@ -20,22 +21,31 @@ import {
   zoomAt,
 } from '../../../domain/drawing/Viewport'
 import type { Viewport } from '../../../domain/drawing/Viewport'
+import { ToolIcon } from './ToolIcons'
+import type { Tool } from './ToolIcons'
 
 /**
  * То, что полотну нужно от владельца рисунка. Интерфейс структурный:
  * ему соответствует DrawingStore, а в тестах — любой наблюдаемый объект.
  */
 export interface CanvasDocument {
-  readonly lines: readonly DrawingLine[]
+  readonly elements: readonly DrawingElement[]
   readonly saveStatus: SaveStatus
-  /** Полный список штрихов после изменения; когда сохранять — решает владелец. */
-  replaceLines(lines: DrawingLine[]): void
+  /** Полный список элементов после изменения; когда сохранять — решает владелец. */
+  replaceElements(elements: DrawingElement[]): void
   retrySave(): void
 }
 
 export interface InfiniteCanvasProps {
   drawing: CanvasDocument
 }
+
+const TOOLS: ReadonlyArray<{ value: Tool; label: string }> = [
+  { value: 'brush', label: 'Кисть' },
+  { value: 'rect', label: 'Прямоугольник' },
+  { value: 'ellipse', label: 'Эллипс' },
+  { value: 'triangle', label: 'Треугольник' },
+]
 
 const COLOR_PRESETS: ReadonlyArray<{ value: string; label: string }> = [
   { value: '#000000', label: 'Чёрный' },
@@ -76,6 +86,12 @@ interface Stroke {
   last: Point
 }
 
+/** Растягиваемая фигура: точка начала фиксирована, второй угол ведёт курсор. */
+interface ShapeDraft {
+  start: Point
+  shape: Shape
+}
+
 interface Drag {
   startClient: Point
   startView: Viewport
@@ -85,10 +101,11 @@ interface Drag {
  * Бесконечная доска для рисования на Canvas API.
  *
  * Дорогие вещи намеренно вынесены из React-состояния: вьюпорт, текущий
- * штрих и размеры полотна живут в ref, а в стейт попадают только готовые
- * линии и то, что видно в панели (цвет, толщина, масштаб, статус). Пока
- * идёт движение мыши, сегменты рисуются прямо в контекст — перерисовка
- * всей доски случается только при сдвиге, зуме, ресайзе и завершении штриха.
+ * штрих, растягиваемая фигура и размеры полотна живут в ref, а наблюдаемым
+ * остаётся только то, что видно в панели (инструмент, цвет, толщина,
+ * масштаб, статус). Пока идёт штрих, сегменты рисуются прямо в контекст —
+ * перерисовка всей доски случается при сдвиге, зуме, ресайзе, завершении
+ * штриха и на каждом кадре растягивания фигуры (как и при сдвиге доски).
  */
 export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: InfiniteCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -97,10 +114,14 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
   // Состояние панели — локальное: кисть, масштаб для индикатора и режим сдвига.
   // Меняется редко (по клику, по завершении жеста), поэтому ему можно быть наблюдаемым
   const tools = useLocalObservable(() => ({
+    tool: 'brush' as Tool,
     color: COLOR_PRESETS[0].value,
     width: DEFAULT_WIDTH,
     zoomPercent: 100,
     panMode: 'none' as PanMode,
+    setTool(value: Tool) {
+      this.tool = value
+    },
     setColor(value: string) {
       this.color = value
     },
@@ -115,19 +136,20 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
     },
   }))
 
-  const { lines } = drawing
+  const { elements } = drawing
 
-  const linesRef = useRef<readonly DrawingLine[]>(lines)
+  const elementsRef = useRef<readonly DrawingElement[]>(elements)
   const viewRef = useRef<Viewport>(initialViewport)
   const strokeRef = useRef<Stroke | null>(null)
+  const shapeRef = useRef<ShapeDraft | null>(null)
   const dragRef = useRef<Drag | null>(null)
   const spaceHeldRef = useRef(false)
   const frameRef = useRef<number | null>(null)
 
-  const commitLines = useCallback(
-    (next: DrawingLine[]) => {
-      linesRef.current = next
-      drawing.replaceLines(next)
+  const commitElements = useCallback(
+    (next: DrawingElement[]) => {
+      elementsRef.current = next
+      drawing.replaceElements(next)
     },
     [drawing],
   )
@@ -155,6 +177,48 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
 
     ctx.stroke()
   }, [])
+
+  const drawShape = useCallback((ctx: CanvasRenderingContext2D, shape: Shape) => {
+    const { x, y, width, height } = shape
+
+    ctx.beginPath()
+
+    switch (shape.kind) {
+      case 'rect':
+        ctx.rect(x, y, width, height)
+        break
+      case 'ellipse':
+        ctx.ellipse(x + width / 2, y + height / 2, width / 2, height / 2, 0, 0, Math.PI * 2)
+        break
+      case 'triangle':
+        // Вершина в середине верхней стороны, основание — нижняя сторона рамки
+        ctx.moveTo(x + width / 2, y)
+        ctx.lineTo(x + width, y + height)
+        ctx.lineTo(x, y + height)
+        ctx.closePath()
+        break
+    }
+
+    if (shape.fill !== null) {
+      ctx.fillStyle = shape.fill
+      ctx.fill()
+    }
+
+    ctx.strokeStyle = shape.strokeColor
+    ctx.lineWidth = shape.strokeWidth
+    ctx.stroke()
+  }, [])
+
+  const drawElement = useCallback(
+    (ctx: CanvasRenderingContext2D, element: DrawingElement) => {
+      if (element.type === 'line') {
+        strokePath(ctx, element)
+      } else {
+        drawShape(ctx, element)
+      }
+    },
+    [drawShape, strokePath],
+  )
 
   const drawGrid = useCallback(
     (ctx: CanvasRenderingContext2D, view: Viewport, cssWidth: number, cssHeight: number) => {
@@ -215,15 +279,20 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
     drawGrid(ctx, view, cssWidth, cssHeight)
 
     applyView(ctx, view)
-    for (const line of linesRef.current) {
-      strokePath(ctx, line)
+    for (const element of elementsRef.current) {
+      drawElement(ctx, element)
     }
 
     // Незавершённый штрих тоже нужно перерисовать, если во время него сдвинули доску
     if (strokeRef.current !== null) {
       strokePath(ctx, strokeRef.current.line)
     }
-  }, [applyView, drawGrid, strokePath])
+
+    // Растягиваемая фигура рисуется поверх всего: она ещё не в списке
+    if (shapeRef.current !== null) {
+      drawShape(ctx, shapeRef.current.shape)
+    }
+  }, [applyView, drawElement, drawGrid, drawShape, strokePath])
 
   const scheduleRedraw = useCallback(() => {
     if (frameRef.current !== null) return
@@ -334,6 +403,22 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
         return
       }
 
+      const draft = shapeRef.current
+      if (draft !== null) {
+        // Фигура меняется целиком, поэтому кадр перерисовывается полностью —
+        // как при сдвиге доски; requestAnimationFrame схлопывает лишние события
+        draft.shape = shapeBetween(
+          draft.shape.id,
+          draft.shape.kind,
+          draft.start,
+          toWorld(event.clientX, event.clientY),
+          draft.shape,
+          event.shiftKey,
+        )
+        scheduleRedraw()
+        return
+      }
+
       const stroke = strokeRef.current
       const ctx = canvasRef.current?.getContext('2d')
       if (stroke === null || !ctx) return
@@ -364,7 +449,13 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
       const stroke = strokeRef.current
       if (stroke !== null) {
         strokeRef.current = null
-        commitLines([...linesRef.current, stroke.line])
+        commitElements([...elementsRef.current, stroke.line])
+      }
+
+      const draft = shapeRef.current
+      if (draft !== null) {
+        shapeRef.current = null
+        commitElements([...elementsRef.current, draft.shape])
       }
     }
 
@@ -377,7 +468,7 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerUp)
     }
-  }, [applyView, commitLines, setView, toWorld, tools])
+  }, [applyView, commitElements, scheduleRedraw, setView, toWorld, tools])
 
   // ── Пробел: режим панорамирования ─────────────────────────────────────
 
@@ -386,6 +477,13 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
       target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
 
     const onKeyDown = (event: KeyboardEvent) => {
+      // Esc бросает растягиваемую фигуру: в список она ещё не попала
+      if (event.code === 'Escape' && shapeRef.current !== null) {
+        shapeRef.current = null
+        scheduleRedraw()
+        return
+      }
+
       if (event.code !== 'Space' || isTyping(event.target)) return
 
       event.preventDefault()
@@ -420,7 +518,7 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
       window.removeEventListener('keyup', onKeyUp)
       window.removeEventListener('blur', onBlur)
     }
-  }, [tools])
+  }, [scheduleRedraw, tools])
 
   // Отложенный кадр не должен пережить компонент. Ref обязательно обнуляем:
   // StrictMode перезапускает эффекты, и с «висящим» id scheduleRedraw
@@ -450,27 +548,35 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
       return
     }
 
-    if (!primary || strokeRef.current !== null) return
-    if (linesRef.current.length >= DRAWING_MAX_LINES) return
+    if (!primary || strokeRef.current !== null || shapeRef.current !== null) return
+    if (elementsRef.current.length >= DRAWING_MAX_ELEMENTS) return
 
     const point = roundPoint(toWorld(event.clientX, event.clientY))
 
-    strokeRef.current = {
-      line: { id: newLineId(), points: [point], color: tools.color, width: tools.width },
-      last: point,
+    if (tools.tool === 'brush') {
+      strokeRef.current = {
+        line: { type: 'line', id: newElementId(), points: [point], color: tools.color, width: tools.width },
+        last: point,
+      }
+    } else {
+      const style = { strokeColor: tools.color, strokeWidth: tools.width }
+      shapeRef.current = {
+        start: point,
+        shape: shapeBetween(newElementId(), tools.tool, point, point, style),
+      }
     }
 
-    // Захват указателя: штрих продолжается, даже если курсор вышел за полотно
+    // Захват указателя: жест продолжается, даже если курсор вышел за полотно
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
   // ── Панель ────────────────────────────────────────────────────────────
 
   const clearAll = () => {
-    if (linesRef.current.length === 0) return
+    if (elementsRef.current.length === 0) return
     if (!window.confirm('Стереть весь рисунок? Отменить это будет нельзя.')) return
 
-    commitLines([])
+    commitElements([])
     scheduleRedraw()
   }
 
@@ -482,13 +588,13 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
     setView(zoomAt(viewRef.current, { x: rect.width / 2, y: rect.height / 2 }, 1 / viewRef.current.zoom))
   }
 
-  // Готовые линии изменились — перерисовать (в том числе после «Очистить всё»)
+  // Список элементов изменился — перерисовать (в том числе после «Очистить всё»)
   useEffect(() => {
-    linesRef.current = lines
+    elementsRef.current = elements
     scheduleRedraw()
-  }, [lines, scheduleRedraw])
+  }, [elements, scheduleRedraw])
 
-  const { panMode, color, width, zoomPercent } = tools
+  const { tool, panMode, color, width, zoomPercent } = tools
   const status = drawing.saveStatus
   const modifier = panMode === 'panning' ? 'canvas--grabbing' : panMode === 'ready' ? 'canvas--grab' : ''
 
@@ -503,6 +609,25 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
       />
 
       <div className="canvas__toolbar" role="toolbar" aria-label="Инструменты">
+        <div className="canvas__group" role="radiogroup" aria-label="Инструмент">
+          {TOOLS.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              role="radio"
+              aria-checked={tool === item.value}
+              aria-label={item.label}
+              title={item.label}
+              className={`canvas__tool ${tool === item.value ? 'canvas__tool--active' : ''}`.trim()}
+              onClick={() => tools.setTool(item.value)}
+            >
+              <ToolIcon tool={item.value} />
+            </button>
+          ))}
+        </div>
+
+        <span className="canvas__divider" />
+
         <div className="canvas__group" role="radiogroup" aria-label="Цвет">
           {COLOR_PRESETS.map((preset) => (
             <button
@@ -552,7 +677,7 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
           type="button"
           className="canvas__clear"
           onClick={clearAll}
-          disabled={lines.length === 0}
+          disabled={elements.length === 0}
         >
           Очистить всё
         </button>
@@ -568,7 +693,9 @@ export const InfiniteCanvas = observer(function InfiniteCanvas({ drawing }: Infi
         {STATUS_LABELS[status]}
       </button>
 
-      <p className="canvas__hint">Колесо — масштаб, Пробел + мышь или средняя кнопка — сдвиг</p>
+      <p className="canvas__hint">
+        Колесо — масштаб, Пробел + мышь или средняя кнопка — сдвиг, Shift — пропорции фигуры, Esc — отмена
+      </p>
     </div>
   )
 })
