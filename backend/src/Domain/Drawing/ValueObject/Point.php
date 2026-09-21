@@ -22,7 +22,7 @@ final readonly class Point
     public static function at(float $x, float $y): self
     {
         if (!is_finite($x) || !is_finite($y)) {
-            throw new InvalidArgument('Координаты точки должны быть конечными числами', 'lines');
+            throw new InvalidArgument('Координаты точки должны быть конечными числами', 'elements');
         }
 
         return new self($x, $y);
@@ -34,7 +34,7 @@ final readonly class Point
     public static function fromArray(mixed $data): self
     {
         if (!is_array($data) || !is_numeric($data['x'] ?? null) || !is_numeric($data['y'] ?? null)) {
-            throw new InvalidArgument('Точка задаётся объектом {x, y} с числовыми координатами', 'lines');
+            throw new InvalidArgument('Точка задаётся объектом {x, y} с числовыми координатами', 'elements');
         }
 
         return self::at((float) $data['x'], (float) $data['y']);

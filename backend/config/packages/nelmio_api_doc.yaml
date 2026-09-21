@@ -57,8 +57,9 @@ when@dev:
                     DrawingLine:
                         type: object
                         description: Один штрих кисти. Идентификатор назначает клиент.
-                        required: [id, points, color, width]
+                        required: [type, id, points, color, width]
                         properties:
+                            type: { type: string, enum: [line], description: 'Записи без type, сохранённые до появления фигур, читаются как штрихи' }
                             id: { type: string, maxLength: 64, example: 7d1e0c7a-2f3e-4f0b-9c1a-5a4c2b7e9d10 }
                             points:
                                 type: array
@@ -67,15 +68,42 @@ when@dev:
                                 items: { $ref: '#/components/schemas/Point' }
                             color: { type: string, pattern: '^#[0-9a-f]{6}$', example: '#000000' }
                             width: { type: number, format: double, minimum: 0.5, maximum: 100, example: 3 }
+                    Shape:
+                        type: object
+                        description: >-
+                            Примитивная фигура в ограничивающем прямоугольнике: x, y — левый верхний угол,
+                            эллипс вписан в прямоугольник, треугольник стоит на его нижней стороне.
+                        required: [type, id, kind, x, y, width, height, strokeColor, strokeWidth]
+                        properties:
+                            type: { type: string, enum: [shape] }
+                            id: { type: string, maxLength: 64, example: 3f6a1c2e-8b4d-4e7f-a1c9-0d2b5e8f7a61 }
+                            kind: { type: string, enum: [rect, ellipse, triangle] }
+                            x: { type: number, format: double, example: 120 }
+                            y: { type: number, format: double, example: 80 }
+                            width: { type: number, format: double, exclusiveMinimum: 0, example: 200 }
+                            height: { type: number, format: double, exclusiveMinimum: 0, example: 120 }
+                            strokeColor: { type: string, pattern: '^#[0-9a-f]{6}$', example: '#1e88e5' }
+                            strokeWidth: { type: number, format: double, minimum: 0.5, maximum: 100, example: 3 }
+                            fill: { type: string, pattern: '^#[0-9a-f]{6}$', nullable: true, description: 'Цвет заливки; null — без заливки' }
+                    DrawingElement:
+                        oneOf:
+                            - { $ref: '#/components/schemas/DrawingLine' }
+                            - { $ref: '#/components/schemas/Shape' }
+                        discriminator:
+                            propertyName: type
+                            mapping:
+                                line: '#/components/schemas/DrawingLine'
+                                shape: '#/components/schemas/Shape'
                     Drawing:
                         type: object
-                        required: [noteId, lines, updatedAt]
+                        required: [noteId, elements, updatedAt]
                         properties:
                             noteId: { type: string, format: uuid }
-                            lines:
+                            elements:
                                 type: array
+                                description: Штрихи и фигуры в порядке наложения
                                 maxItems: 5000
-                                items: { $ref: '#/components/schemas/DrawingLine' }
+                                items: { $ref: '#/components/schemas/DrawingElement' }
                             updatedAt:
                                 type: string
                                 format: date-time

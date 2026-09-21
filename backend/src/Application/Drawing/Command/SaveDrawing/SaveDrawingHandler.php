@@ -7,7 +7,7 @@ namespace App\Application\Drawing\Command\SaveDrawing;
 use App\Application\Drawing\ReadModel\DrawingView;
 use App\Domain\Drawing\Drawing;
 use App\Domain\Drawing\DrawingRepository;
-use App\Domain\Drawing\ValueObject\Strokes;
+use App\Domain\Drawing\ValueObject\Elements;
 use App\Domain\Note\NoteRepository;
 use App\Domain\Note\ValueObject\NoteId;
 
@@ -27,7 +27,7 @@ final readonly class SaveDrawingHandler
         $this->notes->get($noteId);
 
         $drawing = $this->drawings->find($noteId) ?? Drawing::startFor($noteId);
-        $drawing->replaceStrokes(Strokes::fromArray($command->lines));
+        $drawing->replaceElements(Elements::fromArray($command->elements));
 
         $this->drawings->save($drawing);
 

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Drawing;
 
-use App\Domain\Drawing\ValueObject\Strokes;
+use App\Domain\Drawing\ValueObject\Elements;
 use App\Domain\Note\ValueObject\NoteId;
 
 /**
@@ -17,7 +17,7 @@ class Drawing
 {
     private function __construct(
         private readonly NoteId $noteId,
-        private Strokes $strokes,
+        private Elements $elements,
         private \DateTimeImmutable $updatedAt,
     ) {
     }
@@ -27,20 +27,20 @@ class Drawing
      */
     public static function startFor(NoteId $noteId, ?\DateTimeImmutable $at = null): self
     {
-        return new self($noteId, Strokes::none(), $at ?? new \DateTimeImmutable());
+        return new self($noteId, Elements::none(), $at ?? new \DateTimeImmutable());
     }
 
     /**
      * Заменяет содержимое целиком. Повторная отправка того же состояния
      * (ретрай клиента) не должна двигать время изменения.
      */
-    public function replaceStrokes(Strokes $strokes, ?\DateTimeImmutable $at = null): void
+    public function replaceElements(Elements $elements, ?\DateTimeImmutable $at = null): void
     {
-        if ($this->strokes->equals($strokes)) {
+        if ($this->elements->equals($elements)) {
             return;
         }
 
-        $this->strokes = $strokes;
+        $this->elements = $elements;
         $this->updatedAt = $at ?? new \DateTimeImmutable();
     }
 
@@ -49,9 +49,9 @@ class Drawing
         return $this->noteId;
     }
 
-    public function strokes(): Strokes
+    public function elements(): Elements
     {
-        return $this->strokes;
+        return $this->elements;
     }
 
     public function updatedAt(): \DateTimeImmutable

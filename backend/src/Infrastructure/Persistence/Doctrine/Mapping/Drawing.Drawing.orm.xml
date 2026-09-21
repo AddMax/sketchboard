@@ -11,7 +11,8 @@
     <entity name="App\Domain\Drawing\Drawing" table="drawings">
         <id name="noteId" type="note_id" column="note_id"/>
 
-        <field name="strokes" type="drawing_strokes" column="lines"/>
+        <!-- Колонка называется lines с тех времён, когда фигур не было; переименование ради имени не стоит миграции -->
+        <field name="elements" type="drawing_elements" column="lines"/>
         <field name="updatedAt" type="datetime_immutable" column="updated_at"/>
     </entity>
 

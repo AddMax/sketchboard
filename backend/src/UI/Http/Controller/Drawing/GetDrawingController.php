@@ -20,13 +20,13 @@ final readonly class GetDrawingController
     #[Route('/api/notes/{id}/drawing', name: 'drawing_get', methods: ['GET'])]
     #[OA\Get(
         summary: 'Рисунок заметки',
-        description: 'Все штрихи целиком. Если на заметке ещё не рисовали — пустой список '
+        description: 'Все элементы рисунка — штрихи и фигуры — целиком. Если на заметке ещё не рисовали — пустой список '
             .'и `updatedAt: null`; клиенту не нужно различать «нет» и «пусто».',
     )]
     #[OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))]
     #[OA\Response(
         response: 200,
-        description: 'Штрихи рисунка',
+        description: 'Элементы рисунка',
         content: new OA\JsonContent(ref: '#/components/schemas/Drawing'),
     )]
     #[OA\Response(response: 404, ref: '#/components/responses/NoteNotFound')]

@@ -12,8 +12,9 @@ use App\Domain\Shared\InvalidArgument;
  * назначает клиент — линия рождается в браузере и только потом попадает
  * на сервер, поэтому серверная нумерация тут ни к чему.
  */
-final readonly class Line
+final readonly class Line implements Element
 {
+    public const string TYPE = 'line';
     public const int MAX_POINTS = 20_000;
     public const int MAX_ID_LENGTH = 64;
     public const float MIN_WIDTH = 0.5;
@@ -38,21 +39,21 @@ final readonly class Line
         $id = trim($id);
 
         if ('' === $id || mb_strlen($id) > self::MAX_ID_LENGTH) {
-            throw new InvalidArgument('У линии должен быть идентификатор не длиннее 64 символов', 'lines');
+            throw new InvalidArgument('У линии должен быть идентификатор не длиннее 64 символов', 'elements');
         }
 
         if ([] === $points) {
-            throw new InvalidArgument('Линия должна содержать хотя бы одну точку', 'lines');
+            throw new InvalidArgument('Линия должна содержать хотя бы одну точку', 'elements');
         }
 
         if (count($points) > self::MAX_POINTS) {
-            throw new InvalidArgument(sprintf('Линия не может содержать больше %d точек', self::MAX_POINTS), 'lines');
+            throw new InvalidArgument(sprintf('Линия не может содержать больше %d точек', self::MAX_POINTS), 'elements');
         }
 
         if (!is_finite($width) || $width < self::MIN_WIDTH || $width > self::MAX_WIDTH) {
             throw new InvalidArgument(
                 sprintf('Толщина линии должна быть в диапазоне %s…%s', self::MIN_WIDTH, self::MAX_WIDTH),
-                'lines',
+                'elements',
             );
         }
 
@@ -60,23 +61,23 @@ final readonly class Line
     }
 
     /**
-     * @param mixed $data ожидается {id, points: [{x, y}], color, width}
+     * @param array<array-key, mixed> $data ожидается {id, points: [{x, y}], color, width}
      */
-    public static function fromArray(mixed $data): self
+    public static function fromArray(array $data): self
     {
-        if (!is_array($data) || !is_array($data['points'] ?? null)) {
-            throw new InvalidArgument('Линия задаётся объектом {id, points, color, width}', 'lines');
+        if (!is_array($data['points'] ?? null)) {
+            throw new InvalidArgument('Линия задаётся объектом {id, points, color, width}', 'elements');
         }
 
         if (!is_numeric($data['width'] ?? null)) {
-            throw new InvalidArgument('Толщина линии должна быть числом', 'lines');
+            throw new InvalidArgument('Толщина линии должна быть числом', 'elements');
         }
 
         try {
             $color = Color::fromString(is_string($data['color'] ?? null) ? $data['color'] : '');
         } catch (InvalidArgument) {
             // Снаружи это ошибка в поле lines, а не в отдельном поле color
-            throw new InvalidArgument('Цвет линии задаётся в формате #rrggbb', 'lines');
+            throw new InvalidArgument('Цвет линии задаётся в формате #rrggbb', 'elements');
         }
 
         return self::create(
@@ -111,11 +112,12 @@ final readonly class Line
     }
 
     /**
-     * @return array{id: string, points: list<array{x: float, y: float}>, color: string, width: float}
+     * @return array{type: 'line', id: string, points: list<array{x: float, y: float}>, color: string, width: float}
      */
     public function toArray(): array
     {
         return [
+            'type' => self::TYPE,
             'id' => $this->id,
             'points' => array_map(static fn (Point $point): array => $point->toArray(), $this->points),
             'color' => $this->color->toString(),

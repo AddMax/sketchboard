@@ -14,11 +14,11 @@ use App\Domain\Note\ValueObject\NoteId;
 final readonly class DrawingView implements \JsonSerializable
 {
     /**
-     * @param list<array{id: string, points: list<array{x: float, y: float}>, color: string, width: float}> $lines
+     * @param list<array<string, mixed>> $elements штрихи и фигуры в порядке наложения
      */
     public function __construct(
         public string $noteId,
-        public array $lines,
+        public array $elements,
         public ?string $updatedAt,
     ) {
     }
@@ -27,7 +27,7 @@ final readonly class DrawingView implements \JsonSerializable
     {
         return new self(
             noteId: $drawing->noteId()->toString(),
-            lines: $drawing->strokes()->toArray(),
+            elements: $drawing->elements()->toArray(),
             updatedAt: $drawing->updatedAt()->format(\DateTimeInterface::ATOM),
         );
     }
@@ -38,13 +38,13 @@ final readonly class DrawingView implements \JsonSerializable
     }
 
     /**
-     * @return array{noteId: string, lines: list<mixed>, updatedAt: ?string}
+     * @return array{noteId: string, elements: list<mixed>, updatedAt: ?string}
      */
     public function jsonSerialize(): array
     {
         return [
             'noteId' => $this->noteId,
-            'lines' => $this->lines,
+            'elements' => $this->elements,
             'updatedAt' => $this->updatedAt,
         ];
     }

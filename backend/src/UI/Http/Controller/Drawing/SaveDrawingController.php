@@ -25,7 +25,7 @@ final readonly class SaveDrawingController
     #[Route('/api/notes/{id}/drawing', name: 'drawing_save', methods: ['PUT'])]
     #[OA\Put(
         summary: 'Сохранить рисунок',
-        description: 'Заменяет штрихи целиком — побеждает последнее сохранение. '
+        description: 'Заменяет элементы рисунка — штрихи и фигуры — целиком; побеждает последнее сохранение. '
             .'Повтор того же состояния время изменения не двигает. '
             .'Realtime-событий не порождает: рисунок может весить сотни килобайт.',
     )]
@@ -33,13 +33,14 @@ final readonly class SaveDrawingController
     #[OA\RequestBody(
         required: true,
         content: new OA\JsonContent(
-            required: ['lines'],
+            required: ['elements'],
             properties: [
                 new OA\Property(
-                    property: 'lines',
+                    property: 'elements',
+                    description: 'Штрихи и фигуры в порядке наложения',
                     type: 'array',
                     maxItems: 5000,
-                    items: new OA\Items(ref: '#/components/schemas/DrawingLine'),
+                    items: new OA\Items(ref: '#/components/schemas/DrawingElement'),
                 ),
             ],
         ),
@@ -57,7 +58,7 @@ final readonly class SaveDrawingController
 
         return new JsonResponse(($this->saveDrawing)(new SaveDrawingCommand(
             noteId: $id,
-            lines: $payload->list('lines'),
+            elements: $payload->list('elements'),
         )));
     }
 }
