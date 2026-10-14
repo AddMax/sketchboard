@@ -7,10 +7,9 @@ namespace App\Domain\Drawing\ValueObject;
 use App\Domain\Shared\InvalidArgument;
 
 /**
- * Все элементы рисунка целиком — штрихи и фигуры в одном списке, порядок
- * задаёт наложение. Клиент присылает полный список, а не дельту: так
- * состояние на сервере всегда равно тому, что видит автор, и порядок
- * доставки запросов не важен — побеждает последний.
+ * Все элементы сцены целиком, в порядке наложения. Клиент присылает полный
+ * список, а не дельту: так состояние на сервере всегда равно тому, что
+ * видит автор, и порядок доставки запросов не важен — побеждает последний.
  */
 final readonly class Elements implements \Countable
 {
@@ -41,7 +40,7 @@ final readonly class Elements implements \Countable
     }
 
     /**
-     * @param mixed $data ожидается список элементов с полем type
+     * @param mixed $data ожидается список элементов Excalidraw
      */
     public static function fromArray(mixed $data): self
     {
@@ -49,7 +48,7 @@ final readonly class Elements implements \Countable
             throw new InvalidArgument('Элементы рисунка передаются списком', 'elements');
         }
 
-        return self::of(array_map(self::element(...), $data));
+        return self::of(array_map(Element::fromArray(...), $data));
     }
 
     /**
@@ -76,19 +75,5 @@ final readonly class Elements implements \Countable
     public function toArray(): array
     {
         return array_map(static fn (Element $element): array => $element->toArray(), $this->elements);
-    }
-
-    private static function element(mixed $data): Element
-    {
-        if (!is_array($data)) {
-            throw new InvalidArgument('Элемент рисунка задаётся объектом с полем type', 'elements');
-        }
-
-        // Записи, сохранённые до появления фигур, поля type не имеют — это штрихи
-        return match ($data['type'] ?? Line::TYPE) {
-            Line::TYPE => Line::fromArray($data),
-            Shape::TYPE => Shape::fromArray($data),
-            default => throw new InvalidArgument('Тип элемента рисунка должен быть line или shape', 'elements'),
-        };
     }
 }

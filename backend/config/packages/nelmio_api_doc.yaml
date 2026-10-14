@@ -48,52 +48,25 @@ when@dev:
                             color: { type: string, pattern: '^#[0-9a-f]{6}$', example: '#ffd166' }
                             author: { type: string, maxLength: 64, example: гость-451 }
                             createdAt: { type: string, format: date-time, example: '2026-09-10T08:16:38+00:00' }
-                    Point:
-                        type: object
-                        required: [x, y]
-                        properties:
-                            x: { type: number, format: double, example: 120.5 }
-                            y: { type: number, format: double, example: -34 }
-                    DrawingLine:
-                        type: object
-                        description: Один штрих кисти. Идентификатор назначает клиент.
-                        required: [type, id, points, color, width]
-                        properties:
-                            type: { type: string, enum: [line], description: 'Записи без type, сохранённые до появления фигур, читаются как штрихи' }
-                            id: { type: string, maxLength: 64, example: 7d1e0c7a-2f3e-4f0b-9c1a-5a4c2b7e9d10 }
-                            points:
-                                type: array
-                                minItems: 1
-                                maxItems: 20000
-                                items: { $ref: '#/components/schemas/Point' }
-                            color: { type: string, pattern: '^#[0-9a-f]{6}$', example: '#000000' }
-                            width: { type: number, format: double, minimum: 0.5, maximum: 100, example: 3 }
-                    Shape:
+                    DrawingElement:
                         type: object
                         description: >-
-                            Примитивная фигура в ограничивающем прямоугольнике: x, y — левый верхний угол,
-                            эллипс вписан в прямоугольник, треугольник стоит на его нижней стороне.
-                        required: [type, id, kind, x, y, width, height, strokeColor, strokeWidth]
+                            Элемент сцены Excalidraw (rectangle, ellipse, diamond, line, arrow, freedraw, text, frame…)
+                            в формате самого редактора. Сервер хранит его как есть и проверяет только
+                            идентификатор, тип, размер и отсутствие признака удаления. Картинки (`image`)
+                            не принимаются: их файлы хранятся вне сцены.
+                        required: [id, type]
+                        additionalProperties: true
                         properties:
-                            type: { type: string, enum: [shape] }
-                            id: { type: string, maxLength: 64, example: 3f6a1c2e-8b4d-4e7f-a1c9-0d2b5e8f7a61 }
-                            kind: { type: string, enum: [rect, ellipse, triangle] }
-                            x: { type: number, format: double, example: 120 }
-                            y: { type: number, format: double, example: 80 }
-                            width: { type: number, format: double, exclusiveMinimum: 0, example: 200 }
-                            height: { type: number, format: double, exclusiveMinimum: 0, example: 120 }
-                            strokeColor: { type: string, pattern: '^#[0-9a-f]{6}$', example: '#1e88e5' }
-                            strokeWidth: { type: number, format: double, minimum: 0.5, maximum: 100, example: 3 }
-                            fill: { type: string, pattern: '^#[0-9a-f]{6}$', nullable: true, description: 'Цвет заливки; null — без заливки' }
-                    DrawingElement:
-                        oneOf:
-                            - { $ref: '#/components/schemas/DrawingLine' }
-                            - { $ref: '#/components/schemas/Shape' }
-                        discriminator:
-                            propertyName: type
-                            mapping:
-                                line: '#/components/schemas/DrawingLine'
-                                shape: '#/components/schemas/Shape'
+                            id: { type: string, maxLength: 64, example: 7d1e0c7a2f3e4f0b9c1a }
+                            type: { type: string, pattern: '^[a-z]{1,32}$', example: freedraw, description: 'Любой тип элемента Excalidraw, кроме image' }
+                            isDeleted: { type: boolean, enum: [false], description: 'Удалённые элементы клиент отбрасывает до отправки' }
+                            points:
+                                type: array
+                                maxItems: 20000
+                                description: Точки штриха или ломаной относительно x, y элемента
+                                items: { type: array, items: { type: number, format: double }, minItems: 2, maxItems: 2 }
+                            version: { type: integer, example: 3, description: 'Счётчик правок элемента, ведёт Excalidraw' }
                     Drawing:
                         type: object
                         required: [noteId, elements, updatedAt]
@@ -101,7 +74,7 @@ when@dev:
                             noteId: { type: string, format: uuid }
                             elements:
                                 type: array
-                                description: Штрихи и фигуры в порядке наложения
+                                description: Элементы сцены Excalidraw в порядке наложения
                                 maxItems: 5000
                                 items: { $ref: '#/components/schemas/DrawingElement' }
                             updatedAt:

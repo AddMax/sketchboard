@@ -12,12 +12,14 @@ use Doctrine\DBAL\Types\Exception\ValueNotConvertible;
 use Doctrine\DBAL\Types\Type;
 
 /**
- * Элементы рисунка хранятся одним JSON-документом: читаются и пишутся всегда
+ * Элементы сцены хранятся одним JSON-документом: читаются и пишутся всегда
  * целиком, запросов «по точкам» нет — отдельная таблица только усложнила бы сохранение.
  */
 final class ElementsType extends Type
 {
     public const string NAME = 'drawing_elements';
+    /** Элемент Excalidraw вложен неглубоко (точки, привязки, customData), но запас дешевле отказа в чтении. */
+    private const int JSON_DEPTH = 32;
 
     public function getName(): string
     {
@@ -47,7 +49,7 @@ final class ElementsType extends Type
         }
 
         try {
-            return Elements::fromArray(json_decode($json, true, 8, JSON_THROW_ON_ERROR));
+            return Elements::fromArray(json_decode($json, true, self::JSON_DEPTH, JSON_THROW_ON_ERROR));
         } catch (\JsonException|InvalidArgument $e) {
             // В базе лежит то, что домен считает невозможным — порча данных
             throw ValueNotConvertible::new($json, self::NAME, $e->getMessage(), $e);

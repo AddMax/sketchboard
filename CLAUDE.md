@@ -3,7 +3,8 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Sketchboard — realtime-доска заметок. Скелет проекта: Symfony 8.1 на PHP 8.5,
-PostgreSQL 18, Redis 8, React 19 + MobX 7, Centrifugo 6, всё за nginx в Docker.
+PostgreSQL 18, Redis 8, React 19 + MobX 7 + Excalidraw, Centrifugo 6, всё за
+nginx в Docker.
 Описание для людей — в `README.md`, исходная постановка задачи — в `promt.md`;
 здесь то, что экономит время при работе с кодом.
 
@@ -15,7 +16,7 @@ PostgreSQL 18, Redis 8, React 19 + MobX 7, Centrifugo 6, всё за nginx в Do
 make init                  # первый запуск: .env, секреты, сборка, старт, миграции
 make up / down / destroy   # destroy сносит и данные
 make logs                  # логи всех сервисов
-make test                  # тесты: 50 на бэке, 42 на фронте (test-back / test-front — по отдельности)
+make test                  # тесты: 41 на бэке, 31 на фронте (test-back / test-front — по отдельности)
 make health                # /api/health: статусы PostgreSQL, Redis и Centrifugo
 make schema-validate       # сверить XML-маппинг Doctrine со схемой БД
 make migration / migrate   # создать миграцию из маппинга / применить
@@ -32,7 +33,8 @@ make rector && make cs     # применить рефакторинг и сти
 
 Тесты лежат в `backend/tests/Unit/` (PHPUnit 12, атрибут `#[DataProvider]`)
 и `frontend/tests/*.test.ts` (Vitest; сторы проверяются с адаптерами в памяти
-и фальшивыми таймерами, без React и jsdom). Один тест:
+и фальшивыми таймерами, без React и jsdom; Excalidraw в тестах не участвует,
+домен и стор о нём не знают). Один тест:
 
 ```bash
 docker compose exec -T php vendor/bin/phpunit --filter testMovingToSamePlaceRecordsNoEvent
@@ -70,17 +72,22 @@ UI → Application → Domain, а Infrastructure подключается к Dom
   Публикует их **хендлер после успешной записи**, не репозиторий и не контроллер.
   В `DeleteNoteHandler` события снимаются до `remove()` — после удаления объект уже не наш.
 - Агрегатов два: `Note` и `Drawing` (рисунок заметки, ключ общий с заметкой).
-  Рисунок — список `Elements` из штрихов `Line` и фигур `Shape` (`ShapeKind`:
-  rect, ellipse, triangle) в порядке наложения; общий интерфейс `Element`.
-  Элемент различается полем `type` (`line` | `shape`), записи **без** `type`
-  читаются как штрихи — так рисунки сохранялись до появления фигур, миграции
-  не было. Фигура хранится геометрией (`x`, `y`, `width`, `height` > 0,
-  `strokeColor`, `strokeWidth`, `fill` nullable), а не ломаной. Всё лежит
-  одним JSON-документом (`ElementsType`, колонка по-прежнему `lines`) и
-  всегда заменяется целиком — клиент шлёт полный список, а не дельту. Событий
-  рисунок не порождает и по realtime-каналу не летает: может весить сотни
-  килобайт. Связь между агрегатами держит `DeleteNoteHandler`, а не внешний ключ.
-  Ошибки всех элементов приходят с полем `elements`.
+  Рисунок — сцена Excalidraw: `Elements` из `Element` в порядке наложения.
+  `Element` хранит объект редактора **как есть** (`toArray()` возвращает то,
+  что пришло) и проверяет только `id` (строка ≤ 64), `type` (строчные
+  латинские, не `image` — файлы картинок сервер не принимает), `isDeleted`
+  (true → 422: удалённые элементы клиент отбрасывает до отправки) и
+  `points` (список ≤ 20 000). Лимит сцены — 5 000 элементов. Домен
+  **не** разбирает геометрию и стиль: модель принадлежит Excalidraw, новый
+  тип элемента в редакторе не требует правок на сервере. Всё лежит одним
+  JSON-документом (`ElementsType`, колонка `elements`) и всегда заменяется
+  целиком — клиент шлёт полный список, а не дельту. Событий рисунок не
+  порождает и по realtime-каналу не летает: может весить сотни килобайт.
+  Связь между агрегатами держит `DeleteNoteHandler`, а не внешний ключ.
+  Ошибки всех элементов приходят с полем `elements`. Рисунки прежнего
+  формата (штрихи `line` и фигуры `shape` своего полотна) переведены
+  миграцией `Version20261014120000` в `freedraw`, `rectangle`, `ellipse` и
+  замкнутую `line` (треугольник); обратного пути нет.
 - Маппинг Doctrine — XML в `Infrastructure/Persistence/Doctrine/Mapping/`.
   Имя файла кодирует FQCN относительно префикса `App\Domain`:
   `App\Domain\Note\Note` → `Note.Note.orm.xml`, embeddable `Position` →
@@ -90,8 +97,8 @@ UI → Application → Domain, а Infrastructure подключается к Dom
 - Документация API — атрибуты `OpenApi\Attributes` (`OA\Get`, `OA\RequestBody`,
   `OA\Response`…) на `__invoke` контроллера, тег `OA\Tag` на классе. Путь и метод
   Nelmio берёт из `#[Route]`, дублировать не нужно. Переиспользуемые схемы
-  (`Note`, `Drawing`, `DrawingElement` как `oneOf` с дискриминатором `type`,
-  `ValidationError`…) — в `config/packages/nelmio_api_doc.yaml`,
+  (`Note`, `Drawing`, `DrawingElement` — объект с `id`, `type` и
+  `additionalProperties`, `ValidationError`…) — в `config/packages/nelmio_api_doc.yaml`,
   ссылки через `ref: '#/components/schemas/…'`; на read-моделях атрибутов нет,
   чтобы Application не зависел от библиотеки документации. Меняя `NoteView` или
   `DrawingView`, правьте и схему. `OA\Schema` на методе контроллера нельзя —
@@ -103,7 +110,7 @@ UI → Application → Domain, а Infrastructure подключается к Dom
 ### Фронтенд (`frontend/src/`)
 
 Те же слои: `domain/` (правила заметки, чистая функция `applyRealtimeEvent`,
-типы рисунка и математика вьюпорта `Viewport.ts`), `application/` (порты
+тип элемента сцены и `liveElements`), `application/` (порты
 `NoteRepository`, `DrawingRepository`, `RealtimeChannel`, `RealtimeAccessProvider`
 и MobX-сторы `BoardStore`, `DrawingStore`; `Stores.tsx` собирает их из адаптеров
 и раздаёт через контекст), `infrastructure/` (адаптеры + `container.ts` —
@@ -113,13 +120,14 @@ UI → Application → Domain, а Infrastructure подключается к Dom
 **Состояние — только в MobX.** Прикладное состояние живёт в сторах
 (`makeAutoObservable` с `autoBind`), компоненты обёрнуты в `observer` и
 состояние не меняют — вызывают действия стора. Локальное состояние
-формы или панели (черновик текста, кисть, режим сдвига) — `useLocalObservable`,
+формы или панели (черновик текста, системная цветовая схема) — `useLocalObservable`,
 не `useState`; `useState` остаётся только для хранения экземпляра стора
 (`DrawingBoard`). Текущий экран — `ui/routing/RouterStore` (`route`, `navigate`).
+Исключение — сцена Excalidraw: ею владеет сам редактор, стор хранит снимки.
 
 - Доска одна на приложение, стор рисунка — на страницу: `Stores.openDrawing(noteId)`
   создаёт новый, `DrawingBoard` держит его в `useState`, а `key={noteId}` выше
-  гарантирует новый стор при смене заметки. При размонтировании `dispose()`
+  гарантирует новый стор и новый редактор при смене заметки. При размонтировании `dispose()`
   отправляет отложенное сохранение сразу.
 - Массивы заметок и элементов рисунка аннотированы `observableRef`: доска и рисунок
   заменяются целиком, а глубокое наблюдение за десятками тысяч точек
@@ -146,7 +154,7 @@ ui/styles/
   _tokens.scss     размеры и радиусы переменными Sass, цвета — переменными CSS
   _mixins.scss     surface, control, disabled
   _base.scss       сброс и типографика
-  blocks/          по блоку интерфейса: layout, status, composer, board, note, drawing, canvas
+  blocks/          по блоку интерфейса: layout, status, composer, board, note, drawing, editor
 ```
 
 Разделение внутри `_tokens.scss` не случайно: размеры и радиусы нужны
@@ -162,26 +170,29 @@ ui/styles/
   из канала, поэтому автор и остальные обновляются одним и тем же путём.
 - Правила заметки продублированы с бэкендом намеренно (ответить до сетевого
   запроса), но последнее слово за сервером. Меняя инвариант, правьте оба места.
-- Полотно `ui/components/canvas/InfiniteCanvas.tsx` держит вьюпорт, текущий
-  штрих, растягиваемую фигуру и размеры в ref, а не в наблюдаемом состоянии:
-  во время штриха сегменты идут прямо в контекст, React рендерится только по
-  завершении жеста. Растягивание фигуры перерисовывает кадр целиком через
-  `requestAnimationFrame` — так же, как сдвиг доски. Инструмент (`brush` или
-  `ShapeKind`), цвет и толщина — в локальном `useLocalObservable`; фигура берёт
-  их как контур. Shift держит пропорции, Esc бросает незавершённую фигуру.
-  Геометрия фигуры по двум углам — чистая функция `shapeBetween` в
-  `domain/drawing/Drawing.ts`: она нормализует растягивание в любую сторону
-  к левому верхнему углу и положительным размерам. Полотну нужен объект с
-  интерфейсом `CanvasDocument` (`elements`, `saveStatus`, `replaceElements`,
-  `retrySave`) — ему соответствует `DrawingStore`. Сохранение живёт в сторе:
-  `application/shared/debounce.ts` (1,5 с после последнего изменения, flush в
-  `dispose()`). Лимит числа элементов (5 000) совпадает с `Domain\Drawing`;
-  диапазон кисти на клиенте (1–24) намеренно уже серверного (0,5–100) —
-  это пределы ползунка, а не правило домена, и рассинхрон с сервером
-  при их смене не страшен, пока клиент остаётся внутри серверных границ.
-  Новый вид фигуры — вариант в `ShapeKind` на обеих сторонах, ветка в
-  `drawShape` и пиктограмма в `ToolIcons.tsx`. Выделения и перемещения
-  готовых фигур пока нет.
+- Редактор `ui/components/drawing/DrawingEditor.tsx` — обёртка над
+  `@excalidraw/excalidraw` (0.18, React 19). `initialData` читается один раз
+  при монтировании (`useMemo` с пустыми зависимостями), дальше сценой владеет
+  Excalidraw. `onChange` срабатывает на каждое движение указателя и смену
+  `appState`, поэтому снимок уходит в стор только когда изменился
+  `getSceneVersion(elements)` (последняя версия — в `useRef`); перед
+  отправкой `liveElements` отбрасывает `isDeleted` — сервер такие отвергает.
+  Редактору нужен объект с интерфейсом `EditorDocument` (`elements`,
+  `saveStatus`, `replaceElements`, `retrySave`) — ему соответствует
+  `DrawingStore`. Сохранение живёт в сторе: `application/shared/debounce.ts`
+  (1,5 с после последнего изменения, flush в `dispose()`). Статус
+  сохранения — `SaveStatus`, отдельный `observer`, который Excalidraw
+  рисует через `renderTopRightUI` (функцию он вызывает сам, поэтому
+  компонент наблюдает за стором самостоятельно). `UIOptions` выключают
+  загрузку сцены из файла, смену фона, переключатель темы и картинки:
+  ничего из этого сервер не хранит. Тема — проп `theme` из
+  `ui/colorScheme.ts`, локаль — `langCode="ru-RU"`. Тип `DrawingElement`
+  в домене описывает только общие с сервером поля, в `initialData`
+  элементы приводятся через `as unknown as ExcalidrawElement[]` — это
+  единственное место, где два типа встречаются. Excalidraw требует от
+  родителя явной высоты: `.editor { flex: 1; min-height: 0 }`. При первом
+  открытии сконвертированного рисунка редактор может нормализовать сцену
+  (например, выбросить штрих нулевого размера) и сохранить её один раз.
 
 ### Realtime
 
@@ -215,6 +226,13 @@ php-fpm живёт один запрос и соединения держать 
   за каталог `modules/`. В Dockerfile они ставятся по одному, в цикле.
 - **Named volume для `node_modules`** наследует права точки монтирования из
   образа — каталог создан в Dockerfile с нужным UID, иначе npm падает с EACCES.
+- **Шрифты Excalidraw грузятся с CDN** (esm.sh) по умолчанию — под VPN это
+  зависает так же, как загрузки в контейнерах. `main.tsx` выставляет
+  `window.EXCALIDRAW_ASSET_PATH` на `/node_modules/@excalidraw/excalidraw/dist/prod/`:
+  Vite dev-сервер отдаёт файлы из `node_modules` по их пути. Для продакшен-
+  сборки (которой пока нет) шрифты нужно будет скопировать в `public/`.
+  Объявление типа для `window.EXCALIDRAW_ASSET_PATH` — в `src/excalidraw-env.d.ts`,
+  пакет своего `global.d.ts` наружу не отдаёт.
 - **Symfony 8 / DoctrineBundle 3**: часть опций конфига удалена
   (`use_savepoints`, `auto_generate_proxy_classes`). Симптом — «Unrecognized option».
 - Зависимости и миграции накатывает entrypoint контейнера php при старте;
@@ -285,7 +303,9 @@ php-fpm живёт один запрос и соединения держать 
 авторизации нет (имя участника приходит от клиента и ничем не подтверждается,
 место для проверки — `IssueRealtimeAccessHandler`); фронтенд отдаётся Vite
 dev-сервером, продакшен-сборки в стеке нет; интеграционных тестов нет, только
-юнит-тесты домена, сторов, разбора маршрутов и математики вьюпорта, компоненты
-React тестами не покрыты; рисунок не
-синхронизируется между участниками в realtime — каждый видит его при открытии
-страницы, а побеждает последнее сохранение.
+юнит-тесты домена, сторов и разбора маршрутов, компоненты React и сам
+Excalidraw тестами не покрыты; рисунок не синхронизируется между участниками
+в realtime — каждый видит его при открытии страницы, а побеждает последнее
+сохранение (элементы Excalidraw несут `version` и `versionNonce`, а пакет
+экспортирует `reconcileElements` — задел на будущее); картинки в рисунке не
+поддерживаются — их файлы живут вне сцены.

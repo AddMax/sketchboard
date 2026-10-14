@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DrawingStore } from '../src/application/drawing/DrawingStore'
 import type { DrawingRepository } from '../src/application/ports/DrawingRepository'
-import type { DrawingElement, DrawingLine } from '../src/domain/drawing/Drawing'
+import type { DrawingElement } from '../src/domain/drawing/Drawing'
 
-const line = (id: string): DrawingLine => ({
-  type: 'line',
+const line = (id: string): DrawingElement => ({
+  type: 'freedraw',
   id,
-  points: [{ x: 0, y: 0 }],
-  color: '#000000',
-  width: 3,
+  points: [[0, 0]],
+  strokeColor: '#000000',
+  strokeWidth: 1,
 })
 
 /** Хранилище в памяти, которому можно велеть падать на сохранении. */

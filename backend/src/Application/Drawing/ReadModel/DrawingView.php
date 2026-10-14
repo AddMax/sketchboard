@@ -14,7 +14,7 @@ use App\Domain\Note\ValueObject\NoteId;
 final readonly class DrawingView implements \JsonSerializable
 {
     /**
-     * @param list<array<string, mixed>> $elements штрихи и фигуры в порядке наложения
+     * @param list<array<string, mixed>> $elements элементы сцены Excalidraw в порядке наложения
      */
     public function __construct(
         public string $noteId,
