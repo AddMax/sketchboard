@@ -7,7 +7,7 @@ doctrine:
             note_text: App\Infrastructure\Persistence\Doctrine\Type\NoteTextType
             note_color: App\Infrastructure\Persistence\Doctrine\Type\ColorType
             note_author: App\Infrastructure\Persistence\Doctrine\Type\AuthorType
-            drawing_strokes: App\Infrastructure\Persistence\Doctrine\Type\StrokesType
+            drawing_elements: App\Infrastructure\Persistence\Doctrine\Type\ElementsType
 
     orm:
         naming_strategy: doctrine.orm.naming_strategy.underscore_number_aware

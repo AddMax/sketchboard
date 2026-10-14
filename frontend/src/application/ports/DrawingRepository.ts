@@ -1,7 +1,7 @@
-import type { DrawingLine } from '../../domain/drawing/Drawing'
+import type { DrawingElement } from '../../domain/drawing/Drawing'
 
 /** Порт хранилища рисунков: рисунок читается и пишется целиком. */
 export interface DrawingRepository {
-  load(noteId: string): Promise<DrawingLine[]>
-  save(noteId: string, lines: DrawingLine[]): Promise<void>
+  load(noteId: string): Promise<DrawingElement[]>
+  save(noteId: string, elements: DrawingElement[]): Promise<void>
 }

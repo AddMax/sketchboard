@@ -3,13 +3,13 @@ import { useEffect, useState } from 'react'
 import type { DrawingStore } from '../../application/drawing/DrawingStore'
 import { useStores } from '../../application/Stores'
 import type { Note } from '../../domain/note/Note'
-import { InfiniteCanvas } from '../components/canvas/InfiniteCanvas'
+import { DrawingEditor } from '../components/drawing/DrawingEditor'
 import { Link } from '../routing/Link'
 import { BOARD_PATH } from '../routing/routes'
 
 /**
- * Страница доски для рисования, привязанная к заметке: шапка с возвратом
- * и полотно, которое появляется, когда сохранённые штрихи загружены.
+ * Страница рисунка, привязанного к заметке: шапка с возвратом и редактор,
+ * который появляется, когда сохранённая сцена загружена.
  */
 export const DrawingPage = observer(function DrawingPage({
   noteId,
@@ -38,14 +38,14 @@ export const DrawingPage = observer(function DrawingPage({
           Заметка не найдена — возможно, её уже удалили.
         </p>
       ) : (
-        <DrawingBoard key={noteId} noteId={noteId} />
+        <DrawingBoard key={noteId} noteId={noteId} title={note?.text ?? noteId} />
       )}
     </main>
   )
 })
 
-/** key по noteId выше: новая заметка — новый стор и новое полотно, а не мутация старых. */
-const DrawingBoard = observer(function DrawingBoard({ noteId }: { noteId: string }) {
+/** key по noteId выше: новая заметка — новый стор и новый редактор, а не мутация старых. */
+const DrawingBoard = observer(function DrawingBoard({ noteId, title }: { noteId: string; title: string }) {
   const { openDrawing } = useStores()
   const [drawing] = useState<DrawingStore>(() => openDrawing(noteId))
 
@@ -68,5 +68,6 @@ const DrawingBoard = observer(function DrawingBoard({ noteId }: { noteId: string
     return <p className="drawing__loading">Загружаем рисунок…</p>
   }
 
-  return <InfiniteCanvas drawing={drawing} />
+  // Имя идёт в заголовок файла при экспорте картинки
+  return <DrawingEditor drawing={drawing} name={title} />
 })

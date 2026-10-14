@@ -1,33 +1,25 @@
-/** Координаты точки в виртуальном пространстве бесконечной доски. */
-export interface Point {
-  x: number
-  y: number
+/**
+ * Элемент сцены Excalidraw. Домен знает о нём ровно столько, сколько сервер:
+ * идентификатор, тип и признак удаления. Геометрия, стиль и служебные поля
+ * редактора (version, seed, index…) хранятся и возвращаются как есть —
+ * модель принадлежит Excalidraw, а не нам.
+ */
+export interface DrawingElement {
+  readonly id: string
+  readonly type: string
+  readonly isDeleted?: boolean
+  readonly [field: string]: unknown
 }
 
-/** Один штрих: ломаная из точек, цвет и толщина кисти. */
-export interface DrawingLine {
-  id: string
-  points: Point[]
-  color: string
-  width: number
-}
+// Тот же предел, что и на сервере (Domain\Drawing): сверх него сохранение
+// ответит 422, и редактор покажет ошибку
+export const DRAWING_MAX_ELEMENTS = 5_000
 
-// Те же пределы, что и на сервере (Domain\Drawing): клиент не даст
-// нарисовать то, что сервер всё равно отвергнет
-export const BRUSH_WIDTH_MIN = 1
-export const BRUSH_WIDTH_MAX = 24
-export const DRAWING_MAX_LINES = 5_000
-
-/** Идентификатор линии назначает клиент: линия рождается в браузере. */
-export function newLineId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-}
-
-/** Две цифры после запятой хватает глазу, а JSON становится вдвое короче. */
-export function roundPoint(point: Point): Point {
-  return { x: Math.round(point.x * 100) / 100, y: Math.round(point.y * 100) / 100 }
+/**
+ * Excalidraw держит удалённые элементы в сцене как надгробия — так он
+ * сливает правки и откатывает удаление. В хранилище им делать нечего:
+ * сервер такие отвергает, поэтому перед отправкой сцена очищается.
+ */
+export function liveElements<T extends DrawingElement>(elements: readonly T[]): T[] {
+  return elements.filter((element) => element.isDeleted !== true)
 }

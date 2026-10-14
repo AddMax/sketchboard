@@ -1,0 +1,32 @@
+@use '../tokens' as t;
+
+// Редактор Excalidraw занимает всё, что осталось под шапкой: ему нужна
+// явная высота родителя, сам он растягивается на 100%.
+.editor {
+  flex: 1;
+  min-height: 0;
+
+  // Статус сохранения стоит в верхней панели редактора рядом с его кнопками,
+  // поэтому повторяет их высоту и скругление
+  &__status {
+    height: t.$editor-control-height;
+    padding: 0 12px;
+    border: 1px solid t.$hairline;
+    border-radius: t.$radius-control;
+    background: var(--color-surface);
+    font: inherit;
+    font-size: t.$font-size-small;
+    color: var(--color-ink);
+    cursor: default;
+    white-space: nowrap;
+
+    &--saving {
+      opacity: 0.7;
+    }
+
+    &--error {
+      color: var(--color-danger);
+      cursor: pointer;
+    }
+  }
+}

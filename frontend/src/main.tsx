@@ -1,11 +1,15 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { StoresProvider } from './application/Stores'
+import { config } from './infrastructure/config'
 import { createAppStores } from './infrastructure/container'
 import { App } from './ui/App'
 import { currentAuthor } from './ui/identity'
 import { RouterProvider, RouterStore } from './ui/routing/RouterStore'
 import './ui/styles/index.scss'
+
+// Excalidraw читает путь к своим шрифтам из глобальной переменной до первой отрисовки
+window.EXCALIDRAW_ASSET_PATH = config.excalidrawAssetPath
 
 const container = document.getElementById('root')
 

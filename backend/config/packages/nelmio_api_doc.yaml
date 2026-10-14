@@ -48,34 +48,35 @@ when@dev:
                             color: { type: string, pattern: '^#[0-9a-f]{6}$', example: '#ffd166' }
                             author: { type: string, maxLength: 64, example: гость-451 }
                             createdAt: { type: string, format: date-time, example: '2026-09-10T08:16:38+00:00' }
-                    Point:
+                    DrawingElement:
                         type: object
-                        required: [x, y]
+                        description: >-
+                            Элемент сцены Excalidraw (rectangle, ellipse, diamond, line, arrow, freedraw, text, frame…)
+                            в формате самого редактора. Сервер хранит его как есть и проверяет только
+                            идентификатор, тип, размер и отсутствие признака удаления. Картинки (`image`)
+                            не принимаются: их файлы хранятся вне сцены.
+                        required: [id, type]
+                        additionalProperties: true
                         properties:
-                            x: { type: number, format: double, example: 120.5 }
-                            y: { type: number, format: double, example: -34 }
-                    DrawingLine:
-                        type: object
-                        description: Один штрих кисти. Идентификатор назначает клиент.
-                        required: [id, points, color, width]
-                        properties:
-                            id: { type: string, maxLength: 64, example: 7d1e0c7a-2f3e-4f0b-9c1a-5a4c2b7e9d10 }
+                            id: { type: string, maxLength: 64, example: 7d1e0c7a2f3e4f0b9c1a }
+                            type: { type: string, pattern: '^[a-z]{1,32}$', example: freedraw, description: 'Любой тип элемента Excalidraw, кроме image' }
+                            isDeleted: { type: boolean, enum: [false], description: 'Удалённые элементы клиент отбрасывает до отправки' }
                             points:
                                 type: array
-                                minItems: 1
                                 maxItems: 20000
-                                items: { $ref: '#/components/schemas/Point' }
-                            color: { type: string, pattern: '^#[0-9a-f]{6}$', example: '#000000' }
-                            width: { type: number, format: double, minimum: 0.5, maximum: 100, example: 3 }
+                                description: Точки штриха или ломаной относительно x, y элемента
+                                items: { type: array, items: { type: number, format: double }, minItems: 2, maxItems: 2 }
+                            version: { type: integer, example: 3, description: 'Счётчик правок элемента, ведёт Excalidraw' }
                     Drawing:
                         type: object
-                        required: [noteId, lines, updatedAt]
+                        required: [noteId, elements, updatedAt]
                         properties:
                             noteId: { type: string, format: uuid }
-                            lines:
+                            elements:
                                 type: array
+                                description: Элементы сцены Excalidraw в порядке наложения
                                 maxItems: 5000
-                                items: { $ref: '#/components/schemas/DrawingLine' }
+                                items: { $ref: '#/components/schemas/DrawingElement' }
                             updatedAt:
                                 type: string
                                 format: date-time
