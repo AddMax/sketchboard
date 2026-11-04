@@ -15,10 +15,12 @@ export const DrawingPage = observer(function DrawingPage({
   noteId,
   note,
   loaded,
+  author,
 }: {
   noteId: string
   note: Note | undefined
   loaded: boolean
+  author: string
 }) {
   return (
     <main className="drawing">
@@ -38,16 +40,24 @@ export const DrawingPage = observer(function DrawingPage({
           Заметка не найдена — возможно, её уже удалили.
         </p>
       ) : (
-        <DrawingBoard key={noteId} noteId={noteId} title={note?.text ?? noteId} />
+        <DrawingBoard key={noteId} noteId={noteId} title={note?.text ?? noteId} author={author} />
       )}
     </main>
   )
 })
 
 /** key по noteId выше: новая заметка — новый стор и новый редактор, а не мутация старых. */
-const DrawingBoard = observer(function DrawingBoard({ noteId, title }: { noteId: string; title: string }) {
+const DrawingBoard = observer(function DrawingBoard({
+  noteId,
+  title,
+  author,
+}: {
+  noteId: string
+  title: string
+  author: string
+}) {
   const { openDrawing } = useStores()
-  const [drawing] = useState<DrawingStore>(() => openDrawing(noteId))
+  const [drawing] = useState<DrawingStore>(() => openDrawing(noteId, author))
 
   useEffect(() => {
     void drawing.load()

@@ -8,6 +8,9 @@ doctrine:
             note_color: App\Infrastructure\Persistence\Doctrine\Type\ColorType
             note_author: App\Infrastructure\Persistence\Doctrine\Type\AuthorType
             drawing_elements: App\Infrastructure\Persistence\Doctrine\Type\ElementsType
+            file_id: App\Infrastructure\Persistence\Doctrine\Type\FileIdType
+            file_name: App\Infrastructure\Persistence\Doctrine\Type\OriginalNameType
+            file_mime_type: App\Infrastructure\Persistence\Doctrine\Type\MimeTypeType
 
     orm:
         naming_strategy: doctrine.orm.naming_strategy.underscore_number_aware

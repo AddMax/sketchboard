@@ -107,11 +107,24 @@ final class DrawingTest extends TestCase
         yield 'тип не строка' => [[[...$element, 'type' => 1]]];
         yield 'тип с заглавными' => [[[...$element, 'type' => 'Rectangle']]];
         yield 'тип с пробелом' => [[[...$element, 'type' => 'free draw']]];
-        yield 'картинка' => [[[...$element, 'type' => 'image']]];
         yield 'удалённый элемент' => [[[...$element, 'isDeleted' => true]]];
         yield 'точки не список' => [[[...$element, 'type' => 'line', 'points' => 'много']]];
         yield 'слишком много точек' => [[[...$element, 'type' => 'freedraw', 'points' => array_fill(0, Element::MAX_POINTS + 1, [0, 0])]]];
         yield 'слишком много элементов' => [array_fill(0, Elements::MAX_ELEMENTS + 1, $element)];
+    }
+
+    public function testImageElementsExposeTheirFiles(): void
+    {
+        $elements = Elements::fromArray([
+            ['id' => 'i1', 'type' => 'image', 'fileId' => 'file-a'],
+            ['id' => 'i2', 'type' => 'image', 'fileId' => 'file-a'],
+            ['id' => 'i3', 'type' => 'image', 'fileId' => 'file-b'],
+            ['id' => 'i4', 'type' => 'image', 'fileId' => null],
+            ['id' => 'r1', 'type' => 'rectangle', 'fileId' => 'не картинка'],
+        ]);
+
+        self::assertSame(['file-a', 'file-b'], $elements->fileIds(), 'ссылки без повторов, только у картинок');
+        self::assertNull($elements->all()[3]->fileId(), 'картинка без файла — ещё не загружена');
     }
 
     public function testDeletedFlagSetToFalseIsAccepted(): void

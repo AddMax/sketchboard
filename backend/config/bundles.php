@@ -7,6 +7,8 @@ return [
     Doctrine\Bundle\DoctrineBundle\DoctrineBundle::class => ['all' => true],
     Doctrine\Bundle\MigrationsBundle\DoctrineMigrationsBundle::class => ['all' => true],
     Symfony\Bundle\MonologBundle\MonologBundle::class => ['all' => true],
+    // Хранилище файлов: Flysystem поверх S3 API Garage (config/packages/flysystem.yaml)
+    League\FlysystemBundle\FlysystemBundle::class => ['all' => true],
     Symfony\Bundle\DebugBundle\DebugBundle::class => ['dev' => true],
     Symfony\Bundle\MakerBundle\MakerBundle::class => ['dev' => true],
     // Twig нужен только профайлеру: API отдаёт JSON, шаблонов у приложения нет

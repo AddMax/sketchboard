@@ -5,6 +5,9 @@ parameters:
     app.centrifugo_api_key: '%env(CENTRIFUGO_API_KEY)%'
     app.centrifugo_token_secret: '%env(CENTRIFUGO_TOKEN_SECRET)%'
     app.centrifugo_token_ttl: '%env(int:CENTRIFUGO_TOKEN_TTL)%'
+    app.garage_admin_url: '%env(GARAGE_ADMIN_URL)%'
+    # Префикс ссылок на публичные файлы: nginx проксирует его в web-endpoint Garage
+    app.public_files_base_url: '/files'
 
 services:
     _defaults:
@@ -17,6 +20,8 @@ services:
             string $centrifugoApiKey: '%app.centrifugo_api_key%'
             string $centrifugoTokenSecret: '%app.centrifugo_token_secret%'
             int $centrifugoTokenTtl: '%app.centrifugo_token_ttl%'
+            string $garageAdminUrl: '%app.garage_admin_url%'
+            string $publicFilesBaseUrl: '%app.public_files_base_url%'
 
     # Домен — это модель, а не набор сервисов: в контейнер он не попадает.
     # Регистрируем только слои, которые что-то делают.
@@ -28,6 +33,7 @@ services:
             - '../src/Application/**/Command/**/*Command.php'
             - '../src/Application/**/Query/**/*Query.php'
             - '../src/Application/Shared/Port/RealtimeCredentials.php'
+            - '../src/Application/Shared/Port/StorageUnavailable.php'
 
     App\Infrastructure\:
         resource: '../src/Infrastructure/'
@@ -38,6 +44,8 @@ services:
     # Порты домена и приложения → их единственные реализации
     App\Domain\Note\NoteRepository: '@App\Infrastructure\Persistence\Doctrine\DoctrineNoteRepository'
     App\Domain\Drawing\DrawingRepository: '@App\Infrastructure\Persistence\Doctrine\DoctrineDrawingRepository'
+    App\Domain\File\FileRepository: '@App\Infrastructure\Persistence\Doctrine\DoctrineFileRepository'
+    App\Application\Shared\Port\FileStorage: '@App\Infrastructure\Storage\Flysystem\FlysystemFileStorage'
     App\Application\Shared\Port\DomainEventPublisher: '@App\Infrastructure\Realtime\Centrifugo\CentrifugoEventPublisher'
     App\Application\Shared\Port\RealtimeAccess: '@App\Infrastructure\Realtime\Centrifugo\CentrifugoRealtimeAccess'
 
@@ -45,6 +53,23 @@ services:
     App\UI\Http\Controller\:
         resource: '../src/UI/Http/Controller/'
         tags: ['controller.service_arguments']
+
+    # Клиент S3 для Garage. Path-style: бакет в пути, а не в имени хоста —
+    # внутри compose хост один, `garage`. Тело без aws-chunked кодирования:
+    # размер известен заранее, а так меньше поводов для несовместимости.
+    # Через http_client Symfony запросы к Garage видны в профайлере.
+    app.s3_client:
+        class: AsyncAws\S3\S3Client
+        arguments:
+            $configuration:
+                endpoint: '%env(S3_ENDPOINT)%'
+                region: '%env(S3_REGION)%'
+                accessKeyId: '%env(S3_ACCESS_KEY)%'
+                accessKeySecret: '%env(S3_SECRET_KEY)%'
+                pathStyleEndpoint: 'true'
+                sendChunkedBody: 'false'
+            $httpClient: '@http_client'
+            $logger: '@logger'
 
     Redis:
         class: Redis

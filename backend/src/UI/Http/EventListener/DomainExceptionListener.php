@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\UI\Http\EventListener;
 
+use App\Application\Shared\Port\StorageUnavailable;
+use App\Domain\File\Exception\FileAccessDenied;
+use App\Domain\File\Exception\FileNotFound;
 use App\Domain\Note\Exception\NoteNotFound;
 use App\Domain\Shared\InvalidArgument;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
@@ -27,13 +30,23 @@ final readonly class DomainExceptionListener
         $exception = $event->getThrowable();
 
         $response = match (true) {
-            $exception instanceof NoteNotFound => new JsonResponse(
+            $exception instanceof NoteNotFound,
+            $exception instanceof FileNotFound => new JsonResponse(
                 ['error' => $exception->getMessage()],
                 Response::HTTP_NOT_FOUND,
+            ),
+            $exception instanceof FileAccessDenied => new JsonResponse(
+                ['error' => $exception->getMessage()],
+                Response::HTTP_FORBIDDEN,
             ),
             $exception instanceof InvalidArgument => new JsonResponse(
                 ['errors' => [($exception->field() ?: 'request') => $exception->getMessage()]],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
+            ),
+            // Подробности остаются в логе: в ответе ни ключей, ни имён бакетов
+            $exception instanceof StorageUnavailable => new JsonResponse(
+                ['error' => 'Хранилище файлов недоступно'],
+                Response::HTTP_SERVICE_UNAVAILABLE,
             ),
             default => null,
         };

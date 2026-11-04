@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\UI\Http\Controller;
 
 use App\Infrastructure\Realtime\Centrifugo\CentrifugoApi;
+use App\Infrastructure\Storage\Garage\GarageApi;
 use Doctrine\DBAL\Connection;
 use OpenApi\Attributes as OA;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -23,6 +24,7 @@ final readonly class HealthController
         private Connection $connection,
         private \Redis $redis,
         private CentrifugoApi $centrifugo,
+        private GarageApi $garage,
         private string $realtimeChannel,
     ) {
     }
@@ -30,7 +32,7 @@ final readonly class HealthController
     #[Route('/api/health', name: 'health', methods: ['GET'])]
     #[OA\Get(
         summary: 'Состояние стека',
-        description: 'Проверяет PostgreSQL, Redis и Centrifugo одним запросом. '
+        description: 'Проверяет PostgreSQL, Redis, Centrifugo и Garage одним запросом. '
             .'Любой сбой — `503` и текст ошибки вместо `ok` в соответствующем поле.',
     )]
     #[OA\Response(
@@ -51,11 +53,13 @@ final readonly class HealthController
             'postgres' => $this->probe(fn (): mixed => $this->connection->executeQuery('SELECT 1')->fetchOne()),
             'redis' => $this->probe(fn (): \Redis|string|bool => $this->redis->ping()),
             'centrifugo' => $this->probe(fn (): int => $this->centrifugo->presenceCount($this->realtimeChannel)),
+            'garage' => $this->probe(fn (): string => $this->garage->health()),
         ];
 
         $healthy = 'ok' === $checks['postgres']
             && 'ok' === $checks['redis']
-            && 'ok' === $checks['centrifugo'];
+            && 'ok' === $checks['centrifugo']
+            && 'ok' === $checks['garage'];
 
         return new JsonResponse(
             ['status' => $healthy ? 'ok' : 'degraded'] + $checks,

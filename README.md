@@ -15,6 +15,7 @@
 | Realtime | Centrifugo 6 — WebSocket-сервер | `centrifugo/centrifugo:v6.9` (alpine) |
 | БД | PostgreSQL 18 | `postgres:18-alpine` |
 | Кэш и шина событий | Redis 8 | `redis:8-alpine` |
+| Файлы | Garage 2 — S3-совместимое хранилище | `dxflrs/garage:v2.2.0` (бинарник переносится в alpine) |
 | Фронтенд | React 19 + MobX 7 + Excalidraw + Vite + SCSS | `node:24-alpine` |
 
 ## Как это связано
@@ -61,6 +62,37 @@ WebSocket-соединения. Их держит Centrifugo, а бэкенд о
 Что теперь делает Centrifugo вместо своего кода: держит соединения и
 переподключения, считает присутствие (`presence`), хранит короткую историю
 канала и догоняет пропущенное после обрыва, проверяет токены.
+
+### Файлы
+
+Файлы живут не в PostgreSQL, а в Garage — S3-совместимом хранилище в том же
+compose. Бакетов два: `public` и `private`. Публичный раздаёт web-endpoint
+Garage без подписи запросов, nginx проксирует его как `/files/…`;
+анонимного чтения через S3 API у Garage нет, поэтому другого пути к
+публичным файлам и не бывает. Приватный бакет доступен только через S3 API
+с ключом, то есть через бэкенд.
+
+Настройка узла — роль в layout, бакеты, ключ доступа — выполняется
+entrypoint-скриптом контейнера при каждом старте и идемпотентна, как
+миграции в php-контейнере. Пару ключей S3 задаёт `.env` (её генерирует
+`make init`): Garage импортирует её, а бэкенд читает из тех же переменных.
+`GET /api/health` опрашивает admin-порт Garage и показывает `garage: ok`.
+
+На стороне бэкенда — агрегат `StoredFile` (имя, MIME из закрытого списка,
+размер до 10 МБ, видимость, владелец), таблица `files`, порт `FileStorage`
+и сценарии загрузки, удаления, чтения метаданных и скачивания: публичный
+файл читает кто угодно, приватный — только владелец, удаляет — только
+владелец. Порт реализован на Flysystem с адаптером AsyncAws S3: два
+хранилища, по одному на бакет, path-style адресация. Маршруты `/api/files`
+принимают multipart-загрузку, тип файла определяется по содержимому
+(`symfony/mime`), а не по расширению. У публичного файла в ответе есть
+прямая ссылка `url` вида `/files/гггг/мм/<id>.<ext>`; приватный отдаёт
+только `GET /api/files/{id}/content` с заголовком
+`Content-Security-Policy: sandbox`, чтобы SVG или PDF с пользовательским
+содержимым не выполнялись в origin приложения. Кто спрашивает, бэкенд
+узнаёт из query-параметра `requester` (при загрузке — из поля `owner`)
+и, как и везде, ничем это не подтверждает. Когда Garage не отвечает,
+маршруты файлов возвращают 503.
 
 ## Запуск
 
@@ -110,13 +142,18 @@ ip link show $(ip route get 1.1.1.1 | awk '{print $5; exit}')   # смотрит
 | GET | `/` | React-приложение (Vite dev-server): доска заметок |
 | GET | `/notes/{id}/draw` | то же приложение, страница рисунка заметки (редактор Excalidraw) |
 | GET | `/api/doc` | Swagger UI с описанием API (только dev); `/api/doc.json` — спецификация OpenAPI |
-| GET | `/api/health` | статус PHP, PostgreSQL, Redis, Centrifugo |
+| GET | `/api/health` | статус PHP, PostgreSQL, Redis, Centrifugo, Garage |
 | GET | `/api/notes` | список заметок |
 | POST | `/api/notes` | создать заметку |
 | PATCH | `/api/notes/{id}/position` | переместить заметку |
-| DELETE | `/api/notes/{id}` | удалить заметку (вместе с рисунком) |
+| DELETE | `/api/notes/{id}` | удалить заметку (вместе с рисунком и файлами его картинок) |
 | GET | `/api/notes/{id}/drawing` | элементы сцены Excalidraw (пустой список, если не рисовали) |
-| PUT | `/api/notes/{id}/drawing` | сохранить сцену целиком: `{"elements": [элементы Excalidraw как есть]}`; удалённые (`isDeleted: true`) и картинки → 422 |
+| PUT | `/api/notes/{id}/drawing` | сохранить сцену целиком: `{"elements": [элементы Excalidraw как есть]}`; удалённые (`isDeleted: true`) → 422; картинки ссылаются на файлы полем `fileId` |
+| POST | `/api/files` | загрузить файл: multipart с полями `file`, `visibility` (`public` по умолчанию), `owner` |
+| GET | `/api/files/{id}` | метаданные файла; приватный — только владельцу (`?requester=`) |
+| GET | `/api/files/{id}/content` | содержимое файла с `Content-Type` и `Content-Disposition` |
+| DELETE | `/api/files/{id}` | удалить файл вместе с объектом в хранилище; только владелец |
+| GET | `/files/{путь}` | публичный файл напрямую из Garage (web-endpoint через nginx) |
 | GET | `/api/realtime/access` | токен подключения и имя канала |
 | GET | `/ws` | WebSocket Centrifugo (проксируется в `/connection/websocket`) |
 
@@ -130,6 +167,7 @@ make migration     # сгенерировать миграцию из измен
 make migrate       # применить миграции
 make test          # юнит-тесты (бэк + фронт); make test-back / test-front — по отдельности
 make health        # состояние стека через /api/health
+make garage c="bucket list"   # CLI Garage; без c — статус узла
 make lint          # бэкенд: стиль, статический анализ, рефакторинг — только проверка
 make cs            # php-cs-fixer: исправить стиль
 make stan          # phpstan, уровень max
@@ -254,6 +292,11 @@ backend/src/
       Drawing.php             рисунок заметки: отдельный агрегат с тем же идентификатором
       DrawingRepository.php   порт хранилища
       ValueObject/            Elements (вся сцена целиком), Element (элемент Excalidraw как есть)
+    File/
+      StoredFile.php          метаданные загруженного файла; байты — в хранилище под вычисляемым ключом
+      FileRepository.php      порт хранилища метаданных
+      ValueObject/            FileId, OriginalName, MimeType, FileSize, Visibility, StorageKey
+      Exception/              FileNotFound, FileAccessDenied
     Shared/                   DomainEvent, InvalidArgument
   Application/                сценарии, знают домен и порты — больше ничего
     Note/Command/…            CreateNote, MoveNote, DeleteNote (+ Handler)
@@ -262,15 +305,21 @@ backend/src/
     Drawing/Command/SaveDrawing/
     Drawing/Query/GetDrawing/
     Drawing/ReadModel/DrawingView.php
+    File/Command/…            UploadFile, DeleteFile (+ Handler)
+    File/Query/…              GetFile (метаданные), DownloadFile (байты)
+    File/ReadModel/           FileView, FileContent
     Realtime/Query/IssueRealtimeAccess/
-    Shared/Port/              DomainEventPublisher, RealtimeAccess, RealtimeCredentials
+    Shared/Port/              DomainEventPublisher, RealtimeAccess, RealtimeCredentials, FileStorage
   Infrastructure/             адаптеры портов
     Persistence/Doctrine/     репозитории, DBAL-типы (в том числе ElementsType — JSON), XML-маппинг
     Realtime/                 DomainEventSerializer: форма сообщения для клиентов
     Realtime/Centrifugo/      HTTP API, публикация событий, выдача JWT
+    Storage/Garage/           admin API Garage: только проба для /api/health
+    Storage/Flysystem/        FileStorage на Flysystem (AsyncAws S3), по хранилищу на бакет
   UI/
-    Http/Controller/          по классу на маршрут: Note/, Drawing/, Realtime/, HealthController
+    Http/Controller/          по классу на маршрут: Note/, Drawing/, File/, Realtime/, HealthController
     Http/JsonPayload.php      разбор тела запроса
+    Http/UploadedFilePayload.php  файл из multipart: имя, тип по содержимому, байты
     Http/EventListener/       доменные исключения → коды HTTP
 ```
 
@@ -278,7 +327,8 @@ backend/src/
 текст, цвет вне формата `#rrggbb` и координата за пределами полотна просто
 не могут существовать. `symfony/validator` поэтому в зависимостях не нужен:
 `DomainExceptionListener` в одном месте превращает `InvalidArgument` в 422,
-а `NoteNotFound` — в 404, контроллеры исключений не ловят.
+`NoteNotFound` и `FileNotFound` — в 404, `FileAccessDenied` — в 403,
+а `StorageUnavailable` — в 503; контроллеры исключений не ловят.
 
 Рисунок — отдельный агрегат, а не поле заметки: заметка при каждом
 изменении летает по realtime-каналу целиком, а рисунок может весить сотни
@@ -286,15 +336,16 @@ backend/src/
 а сервер хранит её элементы одним JSON-документом в том виде, в каком их
 прислал редактор, и проверяет только то, без чего элемент нельзя
 сохранить, — идентификатор, тип, число точек и элементов, отсутствие
-признака удаления. Картинки не принимаются: их файлы Excalidraw хранит
-отдельно от сцены. Документ всегда заменяется целиком, событий не порождает
-и по каналу не рассылается. Связь между агрегатами держит
-`DeleteNoteHandler`, а не внешний ключ: удаляя заметку, он удаляет
-и рисунок.
+признака удаления. Картинки в сцене — ссылки `fileId` на файлы из
+хранилища, сами байты сервер хранит отдельно (см. «Файлы»). Документ
+всегда заменяется целиком, событий не порождает и по каналу не
+рассылается. Связь между агрегатами держит `DeleteNoteHandler`, а не
+внешний ключ: удаляя заметку, он удаляет и рисунок, и файлы его картинок.
 
 Маппинг Doctrine вынесен в XML (`Infrastructure/Persistence/Doctrine/Mapping`),
-чтобы агрегаты остались свободны от атрибутов ORM. Таблиц две — `notes` и
-`drawings`; `make schema-validate` подтверждает совпадение маппинга со схемой.
+чтобы агрегаты остались свободны от атрибутов ORM. Таблиц три — `notes`,
+`drawings` и `files`; `make schema-validate` подтверждает совпадение маппинга
+со схемой.
 
 ### Фронтенд
 
@@ -304,11 +355,13 @@ frontend/src/
     note/Note.ts              правила заметки (те же, что на сервере), errors.ts — DomainError
     board/Board.ts            applyRealtimeEvent — чистая функция состояния доски
     drawing/Drawing.ts        элемент сцены (id, type, isDeleted — остальное принадлежит редактору), liveElements
+    file/StoredFile.ts        описание файла и правила загрузки (те же, что на сервере)
     realtime/RealtimeEvent.ts типы событий и разбор входящих сообщений
   application/
-    ports/                    NoteRepository, DrawingRepository, RealtimeChannel, RealtimeAccessProvider
+    ports/                    NoteRepository, DrawingRepository, FileRepository, RealtimeChannel, RealtimeAccessProvider
     board/BoardStore.ts       MobX-стор доски: загрузка, события канала, команды
     drawing/DrawingStore.ts   MobX-стор рисунка заметки: элементы, отложенное сохранение, статус
+    file/FileStore.ts         MobX-стор файлов: загрузка, описание по id, удаление, адрес содержимого
     Stores.tsx                сборка сторов из адаптеров и контекст для компонентов
     Dependencies.ts           набор адаптеров, из которого собираются сторы
     shared/debounce.ts        дебаунс без React — им пользуется стор
@@ -317,6 +370,7 @@ frontend/src/
     config.ts                 переменные окружения сборки, адрес WebSocket
     http/jsonRequest.ts       общий вызов JSON API; 422 → DomainError
     http/HttpNoteRepository.ts, HttpDrawingRepository.ts   адаптеры REST
+    http/HttpFileRepository.ts  адаптер файлов: multipart на загрузку, JSON на остальное
     http/HttpRealtimeAccessProvider.ts   получение токена подключения
     realtime/CentrifugoRealtimeChannel.ts адаптер поверх centrifuge-js
     container.ts              композиционный корень
@@ -347,7 +401,13 @@ frontend/src/
 изменения; при уходе со страницы отложенный вызов выполняется сразу.
 Статус («Сохранено», «Сохранение…», «Ошибка сохранения») стоит в верхней
 панели редактора. Тема редактора следует за системной; загрузка сцены из
-файла, смена фона и картинки выключены — они не сохраняются на сервере.
+файла и смена фона выключены — они не сохраняются на сервере. Картинку
+можно вставить инструментом, перетащить или вставить из буфера: файл
+уходит в хранилище в момент вставки (публичным — рисунок видят все),
+и его серверный идентификатор становится `fileId` элемента; при открытии
+рисунка стор забирает байты картинок и отдаёт редактору data-URL-ами.
+Если хранилище не отвечает, редактор показывает ошибку и картинку не
+вставляет — сцена без файлов не бывает.
 Шрифты Excalidraw по умолчанию грузятся с CDN, здесь же они берутся из
 `node_modules` через Vite (`EXCALIDRAW_ASSET_PATH`), чтобы не зависеть
 от внешней сети.
@@ -364,18 +424,22 @@ make test          # домен бэкенда и фронтенда
 ```
 
 Обе группы работают без базы, Redis и контейнера — это и есть проверка того,
-что домен ни от чего не зависит: 41 тест PHP (`backend/tests/Unit/`: агрегаты
-`Note` и `Drawing`, объекты-значения, разбор элементов сцены) и 31 тест TS
-(`frontend/tests/`: правила заметки, состояние доски, очистка сцены от
-удалённых элементов, сторы доски и рисунка с адаптерами в памяти, разбор
-маршрутов) за миллисекунды. Интеграционных тестов нет.
+что домен ни от чего не зависит: 90 тестов PHP (`backend/tests/Unit/`: агрегаты
+`Note`, `Drawing` и `StoredFile`, объекты-значения, разбор элементов сцены,
+сценарии файла с репозиторием и хранилищем в памяти, каскадное удаление
+заметки с рисунком и картинками, адаптер Flysystem на файловой системе
+в памяти, разбор multipart-загрузки) и 52 теста TS (`frontend/tests/`:
+правила заметки и загрузки файла, состояние доски, очистка сцены от
+удалённых элементов и сбор ссылок на картинки, сторы доски, рисунка
+и файлов с адаптерами в памяти, кодирование data-URL, разбор маршрутов)
+за миллисекунды. Интеграционных тестов нет.
 
 ## Проверено
 
 Стек поднят с нуля и проверен сквозным сценарием:
 
 - `GET /api/health` → `{"status":"ok","php":"8.5.10","symfony":"8.1.6",
-  "postgres":"ok","redis":"ok","centrifugo":"ok"}`;
+  "postgres":"ok","redis":"ok","centrifugo":"ok","garage":"ok"}`;
 - `POST /api/notes` пишет в PostgreSQL, и событие `note.created` приходит
   в браузер по WebSocket; то же для `note.moved` и `note.deleted`;
 - эфемерное событие (`cursor`) от одного клиента доходит до другого, минуя
@@ -389,13 +453,37 @@ make test          # домен бэкенда и фронтенда
   как `js-update`;
 - миграции применяются автоматически при старте php-контейнера;
 - рисунок сохраняется через `PUT /api/notes/{id}/drawing` и возвращается при
-  повторном открытии страницы; элемент сверх лимита, с `isDeleted: true`
-  или типа `image` → 422;
+  повторном открытии страницы; элемент сверх лимита или с `isDeleted: true`
+  → 422;
 - элемент Excalidraw с любыми полями редактора (`version`, `seed`,
   `customData`…) возвращается байт в байт, порядок элементов сохраняется;
 - рисунки прежнего формата (штрихи и фигуры своего полотна) переведены
   миграцией в элементы Excalidraw и открываются в редакторе; шрифты и
-  локаль редактора грузятся с того же origin, внешних запросов нет.
+  локаль редактора грузятся с того же origin, внешних запросов нет;
+- Garage поднимается с нуля: entrypoint назначает роль узлу, создаёт бакеты
+  `public` и `private` и импортирует ключ из `.env`; повторный старт
+  ничего не пересоздаёт. Объект, загруженный в `public` по S3 API,
+  читается как `GET /files/<ключ>` → 200; тот же путь к объекту из
+  `private` → 404; `/api/health` без Garage отвечает 503.
+- файлы ходят через API: `POST /api/files` с PNG → 201 и `url`, по которому
+  nginx отдаёт те же байты из Garage; HTML под видом картинки → 422 по полю
+  `mimeType`, без файла → 422 по полю `file`; приватный файл чужому и
+  анонимному → 403, владельцу через `/content` → 200 с `Content-Disposition`
+  (имя в UTF-8 и транслитерация для старых клиентов), а по `/files/…` → 404;
+  удалить чужой файл → 403, свой → 204, после чего и запись, и объект
+  исчезают (`bucket info` показывает 0 объектов); при остановленном Garage
+  загрузка и скачивание → 503, записей-сирот не остаётся;
+- `FileStore` с настоящим `HttpFileRepository`, запущенный из контейнера
+  фронтенда против живого API: публичная и приватная загрузка через
+  multipart, адрес приватного содержимого открывается владельцем, чужой
+  запрос и чужое удаление оставляют текст ошибки в сторе и не трогают
+  список, своё удаление очищает и список, и бакеты;
+- картинка в рисунке настоящими адаптерами из контейнера фронтенда:
+  `DrawingStore.storeImage` загружает PNG и возвращает серверный id, сцена
+  с элементом `image` сохраняется, стор, открытый другим участником,
+  получает картинку data-URL-ом байт в байт; удаление заметки удаляет
+  и файл (`GET /api/files/{id}` → 404, в бакете 0 объектов). Сам рендер
+  Excalidraw в браузере в этот прогон не входил.
 
 ## Что стоит изменить перед продакшеном
 
@@ -408,7 +496,12 @@ make test          # домен бэкенда и фронтенда
   участника приходит от клиента и ничем не подтверждается. Реальная
   авторизация появится в `IssueRealtimeAccessHandler`.
 - `CENTRIFUGO_API_KEY` и `CENTRIFUGO_TOKEN_SECRET` в `.env` сгенерированы
-  локально; в бою их выдаёт хранилище секретов.
+  локально; в бою их выдаёт хранилище секретов. То же про `GARAGE_RPC_SECRET`,
+  `GARAGE_ADMIN_TOKEN` и пару `S3_ACCESS_KEY`/`S3_SECRET_KEY`.
+- Garage запущен одним узлом с `replication_factor = 1`: данные хранятся в
+  единственном экземпляре. Для боя нужны три узла и `replication_factor = 3`
+  либо внешнее S3-хранилище — бэкенд ходит по стандартному S3 API, и
+  подмена сводится к `S3_ENDPOINT` и ключам.
 - Публиковать в канал разрешено любому подписчику (`allow_publish_for_subscriber`) —
   это нужно для курсоров. Если клиентские публикации не потребуются,
   опцию стоит выключить.
@@ -417,9 +510,11 @@ make test          # домен бэкенда и фронтенда
   последнее сохранение. Элементы Excalidraw несут `version` и
   `versionNonce`, а пакет экспортирует `reconcileElements`, так что
   слияние правок через канал — следующий шаг, а не переделка.
-- Сцена не хранит картинок: Excalidraw держит их файлы отдельно от
-  элементов, и сервер их не принимает (инструмент в редакторе выключен,
-  но библиотека фигур может принести `image` — такое сохранение ответит 422).
+- Картинки рисунка загружаются публичными, потому что рисунок видят все
+  участники; с появлением авторизации видимость файлов рисунка должна
+  следовать правам на заметку. Файл картинки, убранной со сцены, остаётся
+  в хранилище до удаления заметки — чистку сирот стоит сделать фоновой
+  задачей.
 - Профайлер, Swagger UI, Twig и `symfony/asset` стоят в `require-dev` и
   включаются только в `dev`; Xdebug собран в образ, но выключен переменной
   `XDEBUG_MODE`. В боевом образе их не должно быть вовсе.

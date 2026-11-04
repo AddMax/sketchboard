@@ -1,10 +1,13 @@
 # Управление локальным окружением. Все команды выполняются в контейнерах.
 DC := docker compose
+# Порт из .env без хвостового комментария: «8080   # nginx…» curl не примет
+HTTP_PORT := $(shell sed -n "s/^HTTP_PORT=\([0-9]*\).*/\1/p" .env 2>/dev/null)
+HTTP_PORT := $(if $(HTTP_PORT),$(HTTP_PORT),8080)
 PHP := $(DC) exec -T php
 NODE := $(DC) exec -T frontend
 
 .DEFAULT_GOAL := help
-.PHONY: help init up down destroy restart build logs ps sh sh-node psql redis-cli migration migrate schema-validate cache-clear composer npm test test-back test-front health xdebug-on xdebug-off xdebug-status lint cs cs-check stan rector rector-check
+.PHONY: help init up down destroy restart build logs ps sh sh-node psql redis-cli garage migration migrate schema-validate cache-clear composer npm test test-back test-front health xdebug-on xdebug-off xdebug-status lint cs cs-check stan rector rector-check
 
 help: ## Список доступных команд
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -25,9 +28,23 @@ init: ## Первый запуск: .env, сборка образов, стар�
 	@grep -q '^CENTRIFUGO_TOKEN_SECRET=замените' .env && \
 		sed -i "s|^CENTRIFUGO_TOKEN_SECRET=.*|CENTRIFUGO_TOKEN_SECRET=$$(openssl rand -base64 36 | tr '+/' '-_' | tr -d '=')|" .env && \
 		echo "сгенерирован CENTRIFUGO_TOKEN_SECRET" || true
+	@# Секреты Garage. Пару ключей S3 задаём сами: Garage импортирует её при
+	@# старте, и бэкенд знает её из того же .env без обмена через логи
+	@grep -q '^GARAGE_RPC_SECRET=замените' .env && \
+		sed -i "s|^GARAGE_RPC_SECRET=.*|GARAGE_RPC_SECRET=$$(openssl rand -hex 32)|" .env && \
+		echo "сгенерирован GARAGE_RPC_SECRET" || true
+	@grep -q '^GARAGE_ADMIN_TOKEN=замените' .env && \
+		sed -i "s|^GARAGE_ADMIN_TOKEN=.*|GARAGE_ADMIN_TOKEN=$$(openssl rand -hex 32)|" .env && \
+		echo "сгенерирован GARAGE_ADMIN_TOKEN" || true
+	@grep -q '^S3_ACCESS_KEY=замените' .env && \
+		sed -i "s|^S3_ACCESS_KEY=.*|S3_ACCESS_KEY=GK$$(openssl rand -hex 12)|" .env && \
+		echo "сгенерирован S3_ACCESS_KEY" || true
+	@grep -q '^S3_SECRET_KEY=замените' .env && \
+		sed -i "s|^S3_SECRET_KEY=.*|S3_SECRET_KEY=$$(openssl rand -hex 32)|" .env && \
+		echo "сгенерирован S3_SECRET_KEY" || true
 	$(DC) build
 	$(DC) up -d
-	@echo "Приложение: http://localhost:$$(grep ^HTTP_PORT .env | cut -d= -f2)"
+	@echo "Приложение: http://localhost:$(HTTP_PORT)"
 
 up: ## Поднять окружение
 	$(DC) up -d
@@ -61,6 +78,9 @@ psql: ## psql в контейнере postgres
 
 redis-cli: ## redis-cli в контейнере redis
 	$(DC) exec redis redis-cli
+
+garage: ## CLI Garage: make garage c="bucket list" (по умолчанию — status)
+	$(DC) exec -T garage garage $(if $(c),$(c),status)
 
 migration: ## Сгенерировать миграцию из изменений сущностей
 	$(PHP) php bin/console doctrine:migrations:diff
@@ -119,4 +139,4 @@ xdebug-status: ## Текущий режим Xdebug в контейнере php
 	@$(PHP) php -r 'echo "xdebug: ", extension_loaded("xdebug") ? (implode(",", xdebug_info("mode")) ?: "off") : "не загружен", PHP_EOL;'
 
 health: ## Проверить связность стека через API
-	@curl -sS http://localhost:$$(grep ^HTTP_PORT .env | cut -d= -f2)/api/health | tee /dev/null; echo
+	@curl -sS http://localhost:$(HTTP_PORT)/api/health | tee /dev/null; echo

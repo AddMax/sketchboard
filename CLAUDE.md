@@ -3,8 +3,8 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Sketchboard — realtime-доска заметок. Скелет проекта: Symfony 8.1 на PHP 8.5,
-PostgreSQL 18, Redis 8, React 19 + MobX 7 + Excalidraw, Centrifugo 6, всё за
-nginx в Docker.
+PostgreSQL 18, Redis 8, React 19 + MobX 7 + Excalidraw, Centrifugo 6,
+Garage 2 (S3-хранилище файлов), всё за nginx в Docker.
 Описание для людей — в `README.md`, исходная постановка задачи — в `promt.md`;
 здесь то, что экономит время при работе с кодом.
 
@@ -16,8 +16,9 @@ nginx в Docker.
 make init                  # первый запуск: .env, секреты, сборка, старт, миграции
 make up / down / destroy   # destroy сносит и данные
 make logs                  # логи всех сервисов
-make test                  # тесты: 41 на бэке, 31 на фронте (test-back / test-front — по отдельности)
-make health                # /api/health: статусы PostgreSQL, Redis и Centrifugo
+make test                  # тесты: 90 на бэке, 52 на фронте (test-back / test-front — по отдельности)
+make health                # /api/health: статусы PostgreSQL, Redis, Centrifugo и Garage
+make garage c="bucket list"    # CLI Garage в контейнере; без c — статус узла
 make schema-validate       # сверить XML-маппинг Doctrine со схемой БД
 make migration / migrate   # создать миграцию из маппинга / применить
 make cache-clear
@@ -62,22 +63,28 @@ UI → Application → Domain, а Infrastructure подключается к Dom
 | `Domain/` | чистый PHP. Ни `use Symfony\…`, ни `use Doctrine\…`, ни атрибутов ORM |
 | `Application/` | сценарии «команда + хендлер», порты, read-модели |
 | `Infrastructure/` | единственное место, где живут Doctrine, Centrifugo, HTTP-клиент |
-| `UI/` | разобрать запрос → вызвать хендлер → отдать JSON. **Один маршрут — один класс** с `__invoke`, каталоги по контексту: `Controller/Note/`, `Controller/Drawing/`, `Controller/Realtime/`. Тело запроса читает `Http/JsonPayload` (`string`, `int`, `list`…) без проверок — что внутри, решает домен |
+| `UI/` | разобрать запрос → вызвать хендлер → отдать JSON. **Один маршрут — один класс** с `__invoke`, каталоги по контексту: `Controller/Note/`, `Controller/Drawing/`, `Controller/File/`, `Controller/Realtime/`. Тело запроса читает `Http/JsonPayload` (`string`, `int`, `list`…) без проверок — что внутри, решает домен; multipart-файл — `Http/UploadedFilePayload` (тип по содержимому через `symfony/mime`, а не по заявке клиента) |
 
 - Инварианты стерегут объекты-значения (`NoteText`, `Position`, `Color`, `Author`),
   а не валидатор: `symfony/validator` намеренно не установлен. VO бросают
   `Domain\Shared\InvalidArgument`, а `DomainExceptionListener` превращает его в 422,
-  `NoteNotFound` — в 404. Контроллеры не ловят исключения сами.
+  `NoteNotFound` и `FileNotFound` — в 404, `FileAccessDenied` — в 403,
+  `StorageUnavailable` (порт хранилища) — в 503 без подробностей в ответе.
+  Контроллеры не ловят исключения сами.
 - Агрегат копит события (`recordThat`) и отдаёт их через `releaseEvents()`.
   Публикует их **хендлер после успешной записи**, не репозиторий и не контроллер.
   В `DeleteNoteHandler` события снимаются до `remove()` — после удаления объект уже не наш.
-- Агрегатов два: `Note` и `Drawing` (рисунок заметки, ключ общий с заметкой).
+- Агрегатов три: `Note`, `Drawing` (рисунок заметки, ключ общий с заметкой)
+  и `StoredFile` (загруженный файл, см. ниже).
   Рисунок — сцена Excalidraw: `Elements` из `Element` в порядке наложения.
   `Element` хранит объект редактора **как есть** (`toArray()` возвращает то,
   что пришло) и проверяет только `id` (строка ≤ 64), `type` (строчные
-  латинские, не `image` — файлы картинок сервер не принимает), `isDeleted`
-  (true → 422: удалённые элементы клиент отбрасывает до отправки) и
-  `points` (список ≤ 20 000). Лимит сцены — 5 000 элементов. Домен
+  латинские), `isDeleted` (true → 422: удалённые элементы клиент
+  отбрасывает до отправки) и `points` (список ≤ 20 000). Лимит сцены —
+  5 000 элементов. Картинка (`image`) ссылается полем `fileId` на
+  `StoredFile`; `Element::fileId()` и `Elements::fileIds()` отдают эти
+  ссылки, а `DeleteNoteHandler` по ним удаляет файлы вместе с заметкой
+  (чужие и битые ссылки пропускает — сцене они не мешали). Домен
   **не** разбирает геометрию и стиль: модель принадлежит Excalidraw, новый
   тип элемента в редакторе не требует правок на сервере. Всё лежит одним
   JSON-документом (`ElementsType`, колонка `elements`) и всегда заменяется
@@ -88,12 +95,27 @@ UI → Application → Domain, а Infrastructure подключается к Dom
   формата (штрихи `line` и фигуры `shape` своего полотна) переведены
   миграцией `Version20261014120000` в `freedraw`, `rectangle`, `ellipse` и
   замкнутую `line` (треугольник); обратного пути нет.
+- `StoredFile` (`Domain/File/`) — метаданные файла: `OriginalName` (только
+  basename, ≤ 255, без управляющих символов), `MimeType` (закрытый список:
+  картинки, PDF, `text/plain`; расширение для ключа берётся из него, а не
+  из имени), `FileSize` (≤ 10 МБ, считается по содержимому, а не по заявке
+  клиента), `Visibility` (enum `public` | `private`), владелец — тот же
+  `Author`, что у заметки. Ключ в хранилище агрегат вычисляет сам
+  (`storageKey()`: бакет по видимости, путь `гггг/мм/<id>.<ext>`) и в базе
+  его нет. Правила доступа — методы `canBeReadBy()` (публичный — всем,
+  приватный — владельцу) и `isOwnedBy()` (удалять может только владелец).
+  Байты ходят через порт `Application/Shared/Port/FileStorage` строкой:
+  предел размера много меньше `memory_limit`. Хендлер загрузки пишет
+  сначала байты, потом запись, и при сбое записи убирает объект; удаление —
+  наоборот, сначала запись: объект-сирота безобиден, запись без объекта —
+  нет. Событий файл не порождает.
 - Маппинг Doctrine — XML в `Infrastructure/Persistence/Doctrine/Mapping/`.
   Имя файла кодирует FQCN относительно префикса `App\Domain`:
   `App\Domain\Note\Note` → `Note.Note.orm.xml`, embeddable `Position` →
   `Note.ValueObject.Position.orm.xml`. Ошибиться легко, симптом —
-  «Class 'App\Domain\Note' does not exist». Таблиц две: `notes` и `drawings`,
-  без внешнего ключа между ними.
+  «Class 'App\Domain\Note' does not exist». Таблиц три: `notes`, `drawings`
+  и `files`, без внешних ключей между ними. Enum PHP (`Visibility`) маппится
+  атрибутом `enum-type` на поле `string`, отдельный тип DBAL не нужен.
 - Документация API — атрибуты `OpenApi\Attributes` (`OA\Get`, `OA\RequestBody`,
   `OA\Response`…) на `__invoke` контроллера, тег `OA\Tag` на классе. Путь и метод
   Nelmio берёт из `#[Route]`, дублировать не нужно. Переиспользуемые схемы
@@ -110,12 +132,23 @@ UI → Application → Domain, а Infrastructure подключается к Dom
 ### Фронтенд (`frontend/src/`)
 
 Те же слои: `domain/` (правила заметки, чистая функция `applyRealtimeEvent`,
-тип элемента сцены и `liveElements`), `application/` (порты
-`NoteRepository`, `DrawingRepository`, `RealtimeChannel`, `RealtimeAccessProvider`
-и MobX-сторы `BoardStore`, `DrawingStore`; `Stores.tsx` собирает их из адаптеров
+тип элемента сцены и `liveElements`, правила загрузки файла `draftFile`),
+`application/` (порты `NoteRepository`, `DrawingRepository`, `FileRepository`,
+`RealtimeChannel`, `RealtimeAccessProvider` и MobX-сторы `BoardStore`,
+`DrawingStore`, `FileStore`; `Stores.tsx` собирает их из адаптеров
 и раздаёт через контекст), `infrastructure/` (адаптеры + `container.ts` —
 единственное место, где выбираются реализации), `ui/` (компоненты, страницы,
 маршрутизация).
+
+- Файлы: `FileStore` копит описания файлов, прошедших через него за сессию
+  (загруженные и запрошенные по id) — списка на сервере нет. Правила
+  (`draftFile`: имя, размер ≤ 10 МБ, тип из списка) проверяются до сети;
+  пустой `Blob.type` пропускается — тип определит сервер по содержимому.
+  Кто загружает или спрашивает, стор узнаёт аргументом каждого действия,
+  как `BoardStore` — автора заметки. `urlOf(file, requester)` отдаёт
+  прямую ссылку публичного файла или адрес `…/content` для приватного.
+  `HttpFileRepository` шлёт multipart через `jsonRequest` с `headers: {}`:
+  заголовок JSON помешал бы браузеру поставить boundary.
 
 **Состояние — только в MobX.** Прикладное состояние живёт в сторах
 (`makeAutoObservable` с `autoBind`), компоненты обёрнуты в `observer` и
@@ -184,8 +217,18 @@ ui/styles/
   сохранения — `SaveStatus`, отдельный `observer`, который Excalidraw
   рисует через `renderTopRightUI` (функцию он вызывает сам, поэтому
   компонент наблюдает за стором самостоятельно). `UIOptions` выключают
-  загрузку сцены из файла, смену фона, переключатель темы и картинки:
-  ничего из этого сервер не хранит. Тема — проп `theme` из
+  загрузку сцены из файла, смену фона и переключатель темы: ничего из
+  этого сервер не хранит. Картинки: проп `generateIdForFile` ведёт в
+  `DrawingStore.storeImage` — файл уходит в `/api/files` **в момент
+  вставки**, публичным (рисунок видят все участники), и его серверный id
+  становится `fileId` элемента, так что в сцене не бывает ссылок на
+  незагруженные файлы, а при ошибке Excalidraw сам показывает её и не
+  вставляет элемент. При открытии `load()` забирает байты картинок
+  (`FileRepository.download`) и отдаёт редактору data-URL-ами в
+  `initialData.files` (`application/shared/dataUrl.ts`): Excalidraw
+  хранит файлы именно так и для SVG разбирает строку, обычный URL его
+  ломает. Удалённая со сцены картинка остаётся в хранилище до удаления
+  заметки. Тема — проп `theme` из
   `ui/colorScheme.ts`, локаль — `langCode="ru-RU"`. Тип `DrawingElement`
   в домене описывает только общие с сервером поля, в `initialData`
   элементы приводятся через `as unknown as ExcalidrawElement[]` — это
@@ -207,6 +250,43 @@ php-fpm живёт один запрос и соединения держать 
   Своё же сообщение возвращается автору: адаптер отбрасывает его по `info.client`,
   который Centrifugo проставляет клиентским публикациям и **не** проставляет серверным.
 - Недоступность Centrifugo не роняет запрос: данные уже в БД, ошибка только в лог.
+
+### Хранилище файлов
+
+Garage — S3-совместимое хранилище в compose (`docker/garage/`). Бэкенд
+ходит в S3 API (`garage:3900`), admin-порт (`garage:3903`) нужен только
+`/api/health` через `Infrastructure/Storage/Garage/GarageApi`.
+
+- Бакетов два, `public` и `private`, имена — в `.env`. **Анонимного чтения
+  через S3 API у Garage нет**: публичный бакет раздаёт его web-endpoint
+  (порт 3902), который выбирает бакет по заголовку `Host`
+  `<bucket>.web.garage.localhost`. nginx проксирует `/files/…` именно туда и
+  подставляет `Host` публичного бакета, поэтому объекты `private` по этому
+  пути дают 404. Приватные файлы отдаёт только бэкенд.
+- Роль узла, бакеты и ключ создаёт `docker/garage/entrypoint.sh` при каждом
+  старте, все шаги идемпотентны. Пару ключей S3 задаёт `.env` и импортирует
+  `garage key import`: так php-контейнер знает её заранее, без обмена через логи.
+- Официальный образ собран from scratch, без shell и wget. Поэтому
+  `docker/garage/Dockerfile` переносит бинарник в alpine — иначе ни
+  healthcheck, ни bootstrap не выполнить.
+- Порт `FileStorage` реализует `Infrastructure/Storage/Flysystem/FlysystemFileStorage`:
+  два хранилища `public.storage` и `private.storage` из
+  `config/packages/flysystem.yaml` (league/flysystem-bundle, адаптер
+  AsyncAws S3), клиент `app.s3_client` — в `services.yaml` с
+  `pathStyleEndpoint: 'true'` (внутри compose хост один, `garage`) и
+  `sendChunkedBody: 'false'`. Опции клиента — строки: `Configuration`
+  AsyncAws приводит всё к строкам сама. Content-Type объекту задаёт адаптер
+  из `MimeType` — по нему web-endpoint отдаёт публичный файл. Ссылка `url`
+  публичного файла — `/files/<путь>` (параметр `app.public_files_base_url`).
+  Маршруты `/api/files` (`Controller/File/`): загрузка multipart (`file`,
+  `visibility`, `owner`), метаданные, содержимое, удаление; кто спрашивает —
+  query-параметр `requester`. Содержимое отдаётся с
+  `Content-Security-Policy: sandbox` и `nosniff`: SVG и PDF от пользователя
+  не должны выполняться в origin приложения. Адаптер проверяется тестом на
+  `league/flysystem-memory` (`tests/Unit/Infrastructure/Storage/`), сценарии —
+  с адаптерами в памяти (`tests/Unit/Application/File/`).
+- **`UploadedFile::getMimeType()` требует `symfony/mime`**, иначе 500
+  «You cannot guess the mime type». Пакет стоит в `require`, не в dev.
 
 ## Ловушки окружения
 
@@ -233,6 +313,13 @@ php-fpm живёт один запрос и соединения держать 
   сборки (которой пока нет) шрифты нужно будет скопировать в `public/`.
   Объявление типа для `window.EXCALIDRAW_ASSET_PATH` — в `src/excalidraw-env.d.ts`,
   пакет своего `global.d.ts` наружу не отдаёт.
+- **`/health` Garage отвечает 503, пока узлу не назначена роль** в layout.
+  Bootstrap в entrypoint ждёт не 200, а любого HTTP-ответа; healthcheck
+  контейнера, наоборот, требует 200 — поэтому `garage` становится
+  `healthy` только после настройки, и php его дожидается.
+- **Повторный `garage key import` того же ID — ошибка 409**, даже после
+  удаления ключа. Скрипт проверяет `garage key info` перед импортом; при
+  смене `S3_ACCESS_KEY` в `.env` новый ключ импортируется, старый остаётся.
 - **Symfony 8 / DoctrineBundle 3**: часть опций конфига удалена
   (`use_savepoints`, `auto_generate_proxy_classes`). Симптом — «Unrecognized option».
 - Зависимости и миграции накатывает entrypoint контейнера php при старте;
@@ -294,8 +381,9 @@ php-fpm живёт один запрос и соединения держать 
 - Новый порт: интерфейс в `Application/Shared/Port/`, реализация в `Infrastructure/`,
   связка — явной строкой в `backend/config/services.yaml`.
 - `.env` не в репозитории; при добавлении переменной обновляйте `.env.example`.
-- Секреты Centrifugo (`CENTRIFUGO_API_KEY`, `CENTRIFUGO_TOKEN_SECRET`) генерирует
-  `make init`; из контейнера php они наружу не выходят.
+- Секреты Centrifugo (`CENTRIFUGO_API_KEY`, `CENTRIFUGO_TOKEN_SECRET`) и Garage
+  (`GARAGE_RPC_SECRET`, `GARAGE_ADMIN_TOKEN`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`)
+  генерирует `make init`; из контейнера php они наружу не выходят.
 
 ## Чего в этом проекте нет
 
@@ -307,5 +395,8 @@ dev-сервером, продакшен-сборки в стеке нет; ин
 Excalidraw тестами не покрыты; рисунок не синхронизируется между участниками
 в realtime — каждый видит его при открытии страницы, а побеждает последнее
 сохранение (элементы Excalidraw несут `version` и `versionNonce`, а пакет
-экспортирует `reconcileElements` — задел на будущее); картинки в рисунке не
-поддерживаются — их файлы живут вне сцены.
+экспортирует `reconcileElements` — задел на будущее); `FileStore` на
+фронтенде пока не использует ни один компонент — картинки рисунка ходят
+через `DrawingStore` напрямую в порт; presigned URL и прямой загрузки из
+браузера в Garage нет — байты идут через php; осиротевшие объекты (файл
+убранной со сцены картинки, объект без записи) никто не чистит.

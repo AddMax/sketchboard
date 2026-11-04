@@ -1,0 +1,38 @@
+# Конфигурация Garage — S3-совместимого хранилища файлов.
+# Секреты сюда не попадают: rpc_secret и admin_token приходят переменными
+# окружения GARAGE_RPC_SECRET и GARAGE_ADMIN_TOKEN из .env
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+
+# sqlite — движок метаданных по умолчанию, для одного узла его достаточно
+db_engine = "sqlite"
+metadata_auto_snapshot_interval = "6h"
+
+# Один узел — одна копия данных. Для кластера значение поднимают до 3,
+# но тогда и узлов должно быть не меньше
+replication_factor = 1
+
+# Внутренний RPC Garage: по нему же ходит CLI в bootstrap-скрипте
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+
+[s3_api]
+# Регион произвольный, но клиент (Symfony) должен передавать тот же
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+# Vhost-стиль адресации: <bucket>.s3.garage.localhost. Клиент использует
+# path-style, поэтому домен нужен только для полноты конфига
+root_domain = ".s3.garage.localhost"
+
+[s3_web]
+# Анонимного чтения через S3 API у Garage нет: публичные файлы раздаёт
+# этот web-endpoint, а бакет выбирается по заголовку Host —
+# <bucket>.web.garage.localhost (его подставляет nginx)
+bind_addr = "[::]:3902"
+root_domain = ".web.garage.localhost"
+
+[admin]
+# /health на этом порту отвечает без токена: им пользуются healthcheck
+# контейнера и /api/health бэкенда
+api_bind_addr = "[::]:3903"

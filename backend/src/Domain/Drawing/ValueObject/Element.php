@@ -20,9 +20,9 @@ final readonly class Element
     public const int MAX_POINTS = 20_000;
 
     /**
-     * Картинка в Excalidraw — ссылка на бинарный файл, который хранится
-     * отдельно от сцены. Файлы мы не принимаем, поэтому такой элемент
-     * после перезагрузки показал бы пустую рамку.
+     * Картинка в Excalidraw — ссылка на файл, который хранится отдельно
+     * от сцены: в поле fileId лежит идентификатор StoredFile. Сцена знает
+     * только ссылку, сам файл живёт в хранилище и удаляется вместе с заметкой.
      */
     public const string TYPE_IMAGE = 'image';
 
@@ -57,10 +57,6 @@ final readonly class Element
             throw new InvalidArgument('Тип элемента задаётся строчными латинскими буквами', 'elements');
         }
 
-        if (self::TYPE_IMAGE === $type) {
-            throw new InvalidArgument('Картинки в рисунке не поддерживаются', 'elements');
-        }
-
         // Удалённые элементы Excalidraw держит в сцене для слияния правок;
         // в хранилище им делать нечего — клиент обязан отбросить их до отправки
         if (true === ($data['isDeleted'] ?? false)) {
@@ -85,6 +81,21 @@ final readonly class Element
     public function type(): string
     {
         return $this->type;
+    }
+
+    /**
+     * Идентификатор файла картинки; у остальных элементов и у картинки
+     * без файла (редактор ещё не загрузил его) — null.
+     */
+    public function fileId(): ?string
+    {
+        if (self::TYPE_IMAGE !== $this->type) {
+            return null;
+        }
+
+        $fileId = $this->data['fileId'] ?? null;
+
+        return is_string($fileId) && '' !== $fileId ? $fileId : null;
     }
 
     /**

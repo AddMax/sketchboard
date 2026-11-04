@@ -25,13 +25,16 @@ when@dev:
                     подключение к которому выдаёт `GET /api/realtime/access`.
 
                     Нарушение доменных правил — `422` с полем и текстом ошибки,
-                    отсутствующая заметка — `404`. Авторизации нет: имя участника
-                    приходит от клиента и ничем не подтверждается.
+                    отсутствующая заметка или файл — `404`, чужой приватный файл — `403`.
+                    Авторизации нет: имя участника приходит от клиента и ничем не
+                    подтверждается — в том числе `requester` у маршрутов файлов.
             tags:
                 - name: Заметки
                   description: Стикеры на общей доске
                 - name: Рисунок
                   description: Доска для рисования, прикреплённая к заметке
+                - name: Файлы
+                  description: Публичные и приватные файлы в хранилище S3
                 - name: Realtime
                   description: Доступ к WebSocket-каналу
                 - name: Диагностика
@@ -51,21 +54,23 @@ when@dev:
                     DrawingElement:
                         type: object
                         description: >-
-                            Элемент сцены Excalidraw (rectangle, ellipse, diamond, line, arrow, freedraw, text, frame…)
+                            Элемент сцены Excalidraw (rectangle, ellipse, diamond, line, arrow, freedraw, text, image, frame…)
                             в формате самого редактора. Сервер хранит его как есть и проверяет только
-                            идентификатор, тип, размер и отсутствие признака удаления. Картинки (`image`)
-                            не принимаются: их файлы хранятся вне сцены.
+                            идентификатор, тип, размер и отсутствие признака удаления. Картинка (`image`)
+                            ссылается полем `fileId` на файл из `POST /api/files`; вместе с заметкой
+                            удаляются и файлы её рисунка.
                         required: [id, type]
                         additionalProperties: true
                         properties:
                             id: { type: string, maxLength: 64, example: 7d1e0c7a2f3e4f0b9c1a }
-                            type: { type: string, pattern: '^[a-z]{1,32}$', example: freedraw, description: 'Любой тип элемента Excalidraw, кроме image' }
+                            type: { type: string, pattern: '^[a-z]{1,32}$', example: freedraw, description: 'Любой тип элемента Excalidraw' }
                             isDeleted: { type: boolean, enum: [false], description: 'Удалённые элементы клиент отбрасывает до отправки' }
                             points:
                                 type: array
                                 maxItems: 20000
                                 description: Точки штриха или ломаной относительно x, y элемента
                                 items: { type: array, items: { type: number, format: double }, minItems: 2, maxItems: 2 }
+                            fileId: { type: string, format: uuid, nullable: true, description: 'Только у image: идентификатор загруженного файла' }
                             version: { type: integer, example: 3, description: 'Счётчик правок элемента, ведёт Excalidraw' }
                     Drawing:
                         type: object
@@ -82,6 +87,25 @@ when@dev:
                                 format: date-time
                                 nullable: true
                                 description: null, если на заметке ещё не рисовали
+                    File:
+                        type: object
+                        required: [id, name, mimeType, size, visibility, owner, url, uploadedAt]
+                        properties:
+                            id: { type: string, format: uuid, example: 01a08a63-e792-7a84-ac0f-129ad0bcfb42 }
+                            name: { type: string, maxLength: 255, example: схема.png, description: 'Имя, каким его загрузили' }
+                            mimeType:
+                                type: string
+                                enum: [image/png, image/jpeg, image/gif, image/webp, image/svg+xml, application/pdf, text/plain]
+                                example: image/png
+                            size: { type: integer, minimum: 1, maximum: 10485760, example: 48213, description: Размер в байтах }
+                            visibility: { type: string, enum: [public, private] }
+                            owner: { type: string, maxLength: 64, example: гость-451 }
+                            url:
+                                type: string
+                                nullable: true
+                                example: /files/2026/11/01a08a63-e792-7a84-ac0f-129ad0bcfb42.png
+                                description: Прямая ссылка на публичный файл; у приватного — null
+                            uploadedAt: { type: string, format: date-time, example: '2026-11-04T12:00:00+00:00' }
                     RealtimeAccess:
                         type: object
                         required: [token, channel, expiresAt]
@@ -91,7 +115,7 @@ when@dev:
                             expiresAt: { type: string, format: date-time }
                     Health:
                         type: object
-                        required: [status, php, symfony, postgres, redis, centrifugo]
+                        required: [status, php, symfony, postgres, redis, centrifugo, garage]
                         properties:
                             status: { type: string, enum: [ok, degraded] }
                             php: { type: string, example: 8.5.10 }
@@ -99,6 +123,7 @@ when@dev:
                             postgres: { type: string, example: ok, description: '`ok` или `error: …`' }
                             redis: { type: string, example: ok }
                             centrifugo: { type: string, example: ok }
+                            garage: { type: string, example: ok }
                     ValidationError:
                         type: object
                         description: Нарушено правило домена; ключ — имя поля
@@ -113,6 +138,18 @@ when@dev:
                         required: [error]
                         properties:
                             error: { type: string, example: Заметка 01a08a63-e792-7a84-ac0f-129ad0bcfb42 не найдена }
+                    ErrorMessage:
+                        type: object
+                        required: [error]
+                        properties:
+                            error: { type: string }
+                parameters:
+                    Requester:
+                        name: requester
+                        in: query
+                        required: false
+                        description: 'Имя участника, от чьего лица запрос; без него — anonymous'
+                        schema: { type: string, maxLength: 64, example: гость-451 }
                 responses:
                     ValidationError:
                         description: Нарушено правило домена
@@ -124,3 +161,22 @@ when@dev:
                         content:
                             application/json:
                                 schema: { $ref: '#/components/schemas/NotFoundError' }
+                    FileNotFound:
+                        description: Файл не найден
+                        content:
+                            application/json:
+                                schema: { $ref: '#/components/schemas/NotFoundError' }
+                    FileAccessDenied:
+                        description: Файл приватный, а запрос не от владельца
+                        content:
+                            application/json:
+                                schema:
+                                    allOf: [{ $ref: '#/components/schemas/ErrorMessage' }]
+                                    example: { error: Доступ к файлу 01a08a63-e792-7a84-ac0f-129ad0bcfb42 запрещён }
+                    StorageUnavailable:
+                        description: Хранилище файлов не отвечает; подробности — в логе бэкенда
+                        content:
+                            application/json:
+                                schema:
+                                    allOf: [{ $ref: '#/components/schemas/ErrorMessage' }]
+                                    example: { error: Хранилище файлов недоступно }

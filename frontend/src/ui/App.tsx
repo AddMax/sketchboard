@@ -39,6 +39,7 @@ export const App = observer(function App({ author }: { author: string }) {
           noteId={route.noteId}
           note={board.notes.find((note) => note.id === route.noteId)}
           loaded={board.loaded}
+          author={author}
         />
       ) : (
         <BoardPage board={board} author={author} />

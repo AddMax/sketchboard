@@ -1,0 +1,16 @@
+# Хранилища файлов: по одному на бакет Garage. Адаптер — AsyncAws S3
+# (ходит через symfony/http-client, без AWS SDK). Клиент S3 описан
+# в services.yaml. Имена хранилищ дают аргументы автовайринга
+# `$publicStorage` и `$privateStorage` у FlysystemFileStorage.
+flysystem:
+    storages:
+        public.storage:
+            adapter: asyncaws
+            options:
+                client: app.s3_client
+                bucket: '%env(S3_BUCKET_PUBLIC)%'
+        private.storage:
+            adapter: asyncaws
+            options:
+                client: app.s3_client
+                bucket: '%env(S3_BUCKET_PRIVATE)%'
