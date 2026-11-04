@@ -2,6 +2,7 @@ import { createStores } from '../application/Stores'
 import type { Stores } from '../application/Stores'
 import { config, websocketUrl } from './config'
 import { HttpDrawingRepository } from './http/HttpDrawingRepository'
+import { HttpFileRepository } from './http/HttpFileRepository'
 import { HttpNoteRepository } from './http/HttpNoteRepository'
 import { HttpRealtimeAccessProvider } from './http/HttpRealtimeAccessProvider'
 import { CentrifugoRealtimeChannel } from './realtime/CentrifugoRealtimeChannel'
@@ -15,6 +16,7 @@ export function createAppStores(participant: string): Stores {
   return createStores({
     notes: new HttpNoteRepository(config.apiBase),
     drawings: new HttpDrawingRepository(config.apiBase),
+    files: new HttpFileRepository(config.apiBase),
     realtime: new CentrifugoRealtimeChannel(
       websocketUrl(),
       new HttpRealtimeAccessProvider(config.apiBase),

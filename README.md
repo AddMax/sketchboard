@@ -355,11 +355,13 @@ frontend/src/
     note/Note.ts              правила заметки (те же, что на сервере), errors.ts — DomainError
     board/Board.ts            applyRealtimeEvent — чистая функция состояния доски
     drawing/Drawing.ts        элемент сцены (id, type, isDeleted — остальное принадлежит редактору), liveElements
+    file/StoredFile.ts        описание файла и правила загрузки (те же, что на сервере)
     realtime/RealtimeEvent.ts типы событий и разбор входящих сообщений
   application/
-    ports/                    NoteRepository, DrawingRepository, RealtimeChannel, RealtimeAccessProvider
+    ports/                    NoteRepository, DrawingRepository, FileRepository, RealtimeChannel, RealtimeAccessProvider
     board/BoardStore.ts       MobX-стор доски: загрузка, события канала, команды
     drawing/DrawingStore.ts   MobX-стор рисунка заметки: элементы, отложенное сохранение, статус
+    file/FileStore.ts         MobX-стор файлов: загрузка, описание по id, удаление, адрес содержимого
     Stores.tsx                сборка сторов из адаптеров и контекст для компонентов
     Dependencies.ts           набор адаптеров, из которого собираются сторы
     shared/debounce.ts        дебаунс без React — им пользуется стор
@@ -368,6 +370,7 @@ frontend/src/
     config.ts                 переменные окружения сборки, адрес WebSocket
     http/jsonRequest.ts       общий вызов JSON API; 422 → DomainError
     http/HttpNoteRepository.ts, HttpDrawingRepository.ts   адаптеры REST
+    http/HttpFileRepository.ts  адаптер файлов: multipart на загрузку, JSON на остальное
     http/HttpRealtimeAccessProvider.ts   получение токена подключения
     realtime/CentrifugoRealtimeChannel.ts адаптер поверх centrifuge-js
     container.ts              композиционный корень
@@ -418,10 +421,10 @@ make test          # домен бэкенда и фронтенда
 что домен ни от чего не зависит: 87 тестов PHP (`backend/tests/Unit/`: агрегаты
 `Note`, `Drawing` и `StoredFile`, объекты-значения, разбор элементов сцены,
 сценарии файла с репозиторием и хранилищем в памяти, адаптер Flysystem на
-файловой системе в памяти, разбор multipart-загрузки) и 31 тест TS
-(`frontend/tests/`: правила заметки, состояние доски, очистка сцены от
-удалённых элементов, сторы доски и рисунка с адаптерами в памяти, разбор
-маршрутов) за миллисекунды. Интеграционных тестов нет.
+файловой системе в памяти, разбор multipart-загрузки) и 44 теста TS
+(`frontend/tests/`: правила заметки и загрузки файла, состояние доски,
+очистка сцены от удалённых элементов, сторы доски, рисунка и файлов с
+адаптерами в памяти, разбор маршрутов) за миллисекунды. Интеграционных тестов нет.
 
 ## Проверено
 
@@ -461,7 +464,12 @@ make test          # домен бэкенда и фронтенда
   (имя в UTF-8 и транслитерация для старых клиентов), а по `/files/…` → 404;
   удалить чужой файл → 403, свой → 204, после чего и запись, и объект
   исчезают (`bucket info` показывает 0 объектов); при остановленном Garage
-  загрузка и скачивание → 503, записей-сирот не остаётся.
+  загрузка и скачивание → 503, записей-сирот не остаётся;
+- `FileStore` с настоящим `HttpFileRepository`, запущенный из контейнера
+  фронтенда против живого API: публичная и приватная загрузка через
+  multipart, адрес приватного содержимого открывается владельцем, чужой
+  запрос и чужое удаление оставляют текст ошибки в сторе и не трогают
+  список, своё удаление очищает и список, и бакеты.
 
 ## Что стоит изменить перед продакшеном
 

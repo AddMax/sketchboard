@@ -16,7 +16,7 @@ Garage 2 (S3-хранилище файлов), всё за nginx в Docker.
 make init                  # первый запуск: .env, секреты, сборка, старт, миграции
 make up / down / destroy   # destroy сносит и данные
 make logs                  # логи всех сервисов
-make test                  # тесты: 87 на бэке, 31 на фронте (test-back / test-front — по отдельности)
+make test                  # тесты: 87 на бэке, 44 на фронте (test-back / test-front — по отдельности)
 make health                # /api/health: статусы PostgreSQL, Redis, Centrifugo и Garage
 make garage c="bucket list"    # CLI Garage в контейнере; без c — статус узла
 make schema-validate       # сверить XML-маппинг Doctrine со схемой БД
@@ -129,12 +129,23 @@ UI → Application → Domain, а Infrastructure подключается к Dom
 ### Фронтенд (`frontend/src/`)
 
 Те же слои: `domain/` (правила заметки, чистая функция `applyRealtimeEvent`,
-тип элемента сцены и `liveElements`), `application/` (порты
-`NoteRepository`, `DrawingRepository`, `RealtimeChannel`, `RealtimeAccessProvider`
-и MobX-сторы `BoardStore`, `DrawingStore`; `Stores.tsx` собирает их из адаптеров
+тип элемента сцены и `liveElements`, правила загрузки файла `draftFile`),
+`application/` (порты `NoteRepository`, `DrawingRepository`, `FileRepository`,
+`RealtimeChannel`, `RealtimeAccessProvider` и MobX-сторы `BoardStore`,
+`DrawingStore`, `FileStore`; `Stores.tsx` собирает их из адаптеров
 и раздаёт через контекст), `infrastructure/` (адаптеры + `container.ts` —
 единственное место, где выбираются реализации), `ui/` (компоненты, страницы,
 маршрутизация).
+
+- Файлы: `FileStore` копит описания файлов, прошедших через него за сессию
+  (загруженные и запрошенные по id) — списка на сервере нет. Правила
+  (`draftFile`: имя, размер ≤ 10 МБ, тип из списка) проверяются до сети;
+  пустой `Blob.type` пропускается — тип определит сервер по содержимому.
+  Кто загружает или спрашивает, стор узнаёт аргументом каждого действия,
+  как `BoardStore` — автора заметки. `urlOf(file, requester)` отдаёт
+  прямую ссылку публичного файла или адрес `…/content` для приватного.
+  `HttpFileRepository` шлёт multipart через `jsonRequest` с `headers: {}`:
+  заголовок JSON помешал бы браузеру поставить boundary.
 
 **Состояние — только в MobX.** Прикладное состояние живёт в сторах
 (`makeAutoObservable` с `autoBind`), компоненты обёрнуты в `observer` и
@@ -372,6 +383,6 @@ Excalidraw тестами не покрыты; рисунок не синхро�
 в realtime — каждый видит его при открытии страницы, а побеждает последнее
 сохранение (элементы Excalidraw несут `version` и `versionNonce`, а пакет
 экспортирует `reconcileElements` — задел на будущее); картинки в рисунке не
-поддерживаются — их файлы живут вне сцены, а `/api/files` фронтенд ещё не
-вызывает; presigned URL и прямой загрузки из браузера в Garage нет — байты
+поддерживаются — их файлы живут вне сцены, а `FileStore` на фронтенде пока
+не использует ни один компонент; presigned URL и прямой загрузки из браузера в Garage нет — байты
 идут через php; осиротевшие объекты в бакетах никто не чистит.

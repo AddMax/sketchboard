@@ -1,4 +1,5 @@
 import type { DrawingRepository } from './ports/DrawingRepository'
+import type { FileRepository } from './ports/FileRepository'
 import type { NoteRepository } from './ports/NoteRepository'
 import type { RealtimeChannel } from './ports/RealtimeChannel'
 
@@ -9,5 +10,6 @@ import type { RealtimeChannel } from './ports/RealtimeChannel'
 export interface Dependencies {
   readonly notes: NoteRepository
   readonly drawings: DrawingRepository
+  readonly files: FileRepository
   readonly realtime: RealtimeChannel
 }

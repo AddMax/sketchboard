@@ -3,19 +3,23 @@ import type { ReactNode } from 'react'
 import { BoardStore } from './board/BoardStore'
 import type { Dependencies } from './Dependencies'
 import { DrawingStore } from './drawing/DrawingStore'
+import { FileStore } from './file/FileStore'
 
 /**
- * Сторы приложения. Доска одна на всё приложение, а рисунок — на страницу:
- * его стор создаётся при открытии заметки и живёт, пока страница открыта.
+ * Сторы приложения. Доска и файлы — одни на всё приложение, а рисунок —
+ * на страницу: его стор создаётся при открытии заметки и живёт, пока
+ * страница открыта.
  */
 export interface Stores {
   readonly board: BoardStore
+  readonly files: FileStore
   openDrawing(noteId: string): DrawingStore
 }
 
-export function createStores({ notes, drawings, realtime }: Dependencies): Stores {
+export function createStores({ notes, drawings, files, realtime }: Dependencies): Stores {
   return {
     board: new BoardStore(notes, realtime),
+    files: new FileStore(files),
     openDrawing: (noteId) => new DrawingStore(noteId, drawings),
   }
 }
