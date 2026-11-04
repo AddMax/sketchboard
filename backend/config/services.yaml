@@ -5,6 +5,7 @@ parameters:
     app.centrifugo_api_key: '%env(CENTRIFUGO_API_KEY)%'
     app.centrifugo_token_secret: '%env(CENTRIFUGO_TOKEN_SECRET)%'
     app.centrifugo_token_ttl: '%env(int:CENTRIFUGO_TOKEN_TTL)%'
+    app.garage_admin_url: '%env(GARAGE_ADMIN_URL)%'
 
 services:
     _defaults:
@@ -17,6 +18,7 @@ services:
             string $centrifugoApiKey: '%app.centrifugo_api_key%'
             string $centrifugoTokenSecret: '%app.centrifugo_token_secret%'
             int $centrifugoTokenTtl: '%app.centrifugo_token_ttl%'
+            string $garageAdminUrl: '%app.garage_admin_url%'
 
     # Домен — это модель, а не набор сервисов: в контейнер он не попадает.
     # Регистрируем только слои, которые что-то делают.

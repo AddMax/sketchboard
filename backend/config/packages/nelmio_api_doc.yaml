@@ -91,7 +91,7 @@ when@dev:
                             expiresAt: { type: string, format: date-time }
                     Health:
                         type: object
-                        required: [status, php, symfony, postgres, redis, centrifugo]
+                        required: [status, php, symfony, postgres, redis, centrifugo, garage]
                         properties:
                             status: { type: string, enum: [ok, degraded] }
                             php: { type: string, example: 8.5.10 }
@@ -99,6 +99,7 @@ when@dev:
                             postgres: { type: string, example: ok, description: '`ok` или `error: …`' }
                             redis: { type: string, example: ok }
                             centrifugo: { type: string, example: ok }
+                            garage: { type: string, example: ok }
                     ValidationError:
                         type: object
                         description: Нарушено правило домена; ключ — имя поля

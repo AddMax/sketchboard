@@ -3,8 +3,8 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Sketchboard — realtime-доска заметок. Скелет проекта: Symfony 8.1 на PHP 8.5,
-PostgreSQL 18, Redis 8, React 19 + MobX 7 + Excalidraw, Centrifugo 6, всё за
-nginx в Docker.
+PostgreSQL 18, Redis 8, React 19 + MobX 7 + Excalidraw, Centrifugo 6,
+Garage 2 (S3-хранилище файлов), всё за nginx в Docker.
 Описание для людей — в `README.md`, исходная постановка задачи — в `promt.md`;
 здесь то, что экономит время при работе с кодом.
 
@@ -17,7 +17,8 @@ make init                  # первый запуск: .env, секреты, с
 make up / down / destroy   # destroy сносит и данные
 make logs                  # логи всех сервисов
 make test                  # тесты: 41 на бэке, 31 на фронте (test-back / test-front — по отдельности)
-make health                # /api/health: статусы PostgreSQL, Redis и Centrifugo
+make health                # /api/health: статусы PostgreSQL, Redis, Centrifugo и Garage
+make garage c="bucket list"    # CLI Garage в контейнере; без c — статус узла
 make schema-validate       # сверить XML-маппинг Doctrine со схемой БД
 make migration / migrate   # создать миграцию из маппинга / применить
 make cache-clear
@@ -208,6 +209,27 @@ php-fpm живёт один запрос и соединения держать 
   который Centrifugo проставляет клиентским публикациям и **не** проставляет серверным.
 - Недоступность Centrifugo не роняет запрос: данные уже в БД, ошибка только в лог.
 
+### Хранилище файлов
+
+Garage — S3-совместимое хранилище в compose (`docker/garage/`). Бэкенд
+ходит в S3 API (`garage:3900`), admin-порт (`garage:3903`) нужен только
+`/api/health` через `Infrastructure/Storage/Garage/GarageApi`.
+
+- Бакетов два, `public` и `private`, имена — в `.env`. **Анонимного чтения
+  через S3 API у Garage нет**: публичный бакет раздаёт его web-endpoint
+  (порт 3902), который выбирает бакет по заголовку `Host`
+  `<bucket>.web.garage.localhost`. nginx проксирует `/files/…` именно туда и
+  подставляет `Host` публичного бакета, поэтому объекты `private` по этому
+  пути дают 404. Приватные файлы отдаёт только бэкенд.
+- Роль узла, бакеты и ключ создаёт `docker/garage/entrypoint.sh` при каждом
+  старте, все шаги идемпотентны. Пару ключей S3 задаёт `.env` и импортирует
+  `garage key import`: так php-контейнер знает её заранее, без обмена через логи.
+- Официальный образ собран from scratch, без shell и wget. Поэтому
+  `docker/garage/Dockerfile` переносит бинарник в alpine — иначе ни
+  healthcheck, ни bootstrap не выполнить.
+- Порт `FileStorage`, агрегат файла и маршруты `/api/files` ещё не написаны:
+  хранилище поднято под них.
+
 ## Ловушки окружения
 
 Найдены опытным путём — на них легко потерять время заново.
@@ -233,6 +255,13 @@ php-fpm живёт один запрос и соединения держать 
   сборки (которой пока нет) шрифты нужно будет скопировать в `public/`.
   Объявление типа для `window.EXCALIDRAW_ASSET_PATH` — в `src/excalidraw-env.d.ts`,
   пакет своего `global.d.ts` наружу не отдаёт.
+- **`/health` Garage отвечает 503, пока узлу не назначена роль** в layout.
+  Bootstrap в entrypoint ждёт не 200, а любого HTTP-ответа; healthcheck
+  контейнера, наоборот, требует 200 — поэтому `garage` становится
+  `healthy` только после настройки, и php его дожидается.
+- **Повторный `garage key import` того же ID — ошибка 409**, даже после
+  удаления ключа. Скрипт проверяет `garage key info` перед импортом; при
+  смене `S3_ACCESS_KEY` в `.env` новый ключ импортируется, старый остаётся.
 - **Symfony 8 / DoctrineBundle 3**: часть опций конфига удалена
   (`use_savepoints`, `auto_generate_proxy_classes`). Симптом — «Unrecognized option».
 - Зависимости и миграции накатывает entrypoint контейнера php при старте;
@@ -294,8 +323,9 @@ php-fpm живёт один запрос и соединения держать 
 - Новый порт: интерфейс в `Application/Shared/Port/`, реализация в `Infrastructure/`,
   связка — явной строкой в `backend/config/services.yaml`.
 - `.env` не в репозитории; при добавлении переменной обновляйте `.env.example`.
-- Секреты Centrifugo (`CENTRIFUGO_API_KEY`, `CENTRIFUGO_TOKEN_SECRET`) генерирует
-  `make init`; из контейнера php они наружу не выходят.
+- Секреты Centrifugo (`CENTRIFUGO_API_KEY`, `CENTRIFUGO_TOKEN_SECRET`) и Garage
+  (`GARAGE_RPC_SECRET`, `GARAGE_ADMIN_TOKEN`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`)
+  генерирует `make init`; из контейнера php они наружу не выходят.
 
 ## Чего в этом проекте нет
 
@@ -308,4 +338,5 @@ Excalidraw тестами не покрыты; рисунок не синхро�
 в realtime — каждый видит его при открытии страницы, а побеждает последнее
 сохранение (элементы Excalidraw несут `version` и `versionNonce`, а пакет
 экспортирует `reconcileElements` — задел на будущее); картинки в рисунке не
-поддерживаются — их файлы живут вне сцены.
+поддерживаются — их файлы живут вне сцены; хранилище файлов (Garage)
+поднято, но бэкенд в него ещё не пишет — нет порта, агрегата и API.
