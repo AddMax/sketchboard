@@ -78,8 +78,12 @@ entrypoint-скриптом контейнера при каждом старт�
 `make init`): Garage импортирует её, а бэкенд читает из тех же переменных.
 `GET /api/health` опрашивает admin-порт Garage и показывает `garage: ok`.
 
-Сейчас хранилище только поднято и проверено; порт `FileStorage`, таблица
-`files` и маршруты `/api/files` — следующий этап.
+На стороне бэкенда готовы агрегат `StoredFile` (имя, MIME из закрытого
+списка, размер до 10 МБ, видимость, владелец), таблица `files`, порт
+`FileStorage` и сценарии загрузки, удаления, чтения метаданных и
+скачивания: публичный файл читает кто угодно, приватный — только владелец,
+удаляет — только владелец. Реализация порта на S3 и маршруты `/api/files` —
+следующий этап.
 
 ## Запуск
 
@@ -274,6 +278,11 @@ backend/src/
       Drawing.php             рисунок заметки: отдельный агрегат с тем же идентификатором
       DrawingRepository.php   порт хранилища
       ValueObject/            Elements (вся сцена целиком), Element (элемент Excalidraw как есть)
+    File/
+      StoredFile.php          метаданные загруженного файла; байты — в хранилище под вычисляемым ключом
+      FileRepository.php      порт хранилища метаданных
+      ValueObject/            FileId, OriginalName, MimeType, FileSize, Visibility, StorageKey
+      Exception/              FileNotFound, FileAccessDenied
     Shared/                   DomainEvent, InvalidArgument
   Application/                сценарии, знают домен и порты — больше ничего
     Note/Command/…            CreateNote, MoveNote, DeleteNote (+ Handler)
@@ -282,12 +291,16 @@ backend/src/
     Drawing/Command/SaveDrawing/
     Drawing/Query/GetDrawing/
     Drawing/ReadModel/DrawingView.php
+    File/Command/…            UploadFile, DeleteFile (+ Handler)
+    File/Query/…              GetFile (метаданные), DownloadFile (байты)
+    File/ReadModel/           FileView, FileContent
     Realtime/Query/IssueRealtimeAccess/
-    Shared/Port/              DomainEventPublisher, RealtimeAccess, RealtimeCredentials
+    Shared/Port/              DomainEventPublisher, RealtimeAccess, RealtimeCredentials, FileStorage
   Infrastructure/             адаптеры портов
     Persistence/Doctrine/     репозитории, DBAL-типы (в том числе ElementsType — JSON), XML-маппинг
     Realtime/                 DomainEventSerializer: форма сообщения для клиентов
     Realtime/Centrifugo/      HTTP API, публикация событий, выдача JWT
+    Storage/Garage/           admin API Garage: только проба для /api/health
   UI/
     Http/Controller/          по классу на маршрут: Note/, Drawing/, Realtime/, HealthController
     Http/JsonPayload.php      разбор тела запроса
@@ -313,8 +326,9 @@ backend/src/
 и рисунок.
 
 Маппинг Doctrine вынесен в XML (`Infrastructure/Persistence/Doctrine/Mapping`),
-чтобы агрегаты остались свободны от атрибутов ORM. Таблиц две — `notes` и
-`drawings`; `make schema-validate` подтверждает совпадение маппинга со схемой.
+чтобы агрегаты остались свободны от атрибутов ORM. Таблиц три — `notes`,
+`drawings` и `files`; `make schema-validate` подтверждает совпадение маппинга
+со схемой.
 
 ### Фронтенд
 
@@ -384,8 +398,9 @@ make test          # домен бэкенда и фронтенда
 ```
 
 Обе группы работают без базы, Redis и контейнера — это и есть проверка того,
-что домен ни от чего не зависит: 41 тест PHP (`backend/tests/Unit/`: агрегаты
-`Note` и `Drawing`, объекты-значения, разбор элементов сцены) и 31 тест TS
+что домен ни от чего не зависит: 79 тестов PHP (`backend/tests/Unit/`: агрегаты
+`Note`, `Drawing` и `StoredFile`, объекты-значения, разбор элементов сцены,
+сценарии файла с репозиторием и хранилищем в памяти) и 31 тест TS
 (`frontend/tests/`: правила заметки, состояние доски, очистка сцены от
 удалённых элементов, сторы доски и рисунка с адаптерами в памяти, разбор
 маршрутов) за миллисекунды. Интеграционных тестов нет.

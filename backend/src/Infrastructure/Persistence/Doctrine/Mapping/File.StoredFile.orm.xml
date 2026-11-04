@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Метаданные файла. Байты лежат в хранилище под ключом, который агрегат
+    вычисляет сам, поэтому колонки с ключом нет. Видимость — enum PHP,
+    Doctrine сам переводит его в строку и обратно.
+-->
+<doctrine-mapping xmlns="http://doctrine-project.org/schemas/orm/doctrine-mapping"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xsi:schemaLocation="http://doctrine-project.org/schemas/orm/doctrine-mapping
+                                      https://www.doctrine-project.org/schemas/orm/doctrine-mapping.xsd">
+
+    <entity name="App\Domain\File\StoredFile" table="files">
+        <indexes>
+            <index name="idx_files_owner" columns="owner"/>
+        </indexes>
+
+        <id name="id" type="file_id" column="id"/>
+
+        <field name="name" type="file_name" column="name" length="255"/>
+        <field name="mimeType" type="file_mime_type" column="mime_type" length="127"/>
+        <field name="visibility" type="string" column="visibility" length="16"
+               enum-type="App\Domain\File\ValueObject\Visibility"/>
+        <field name="owner" type="note_author" column="owner" length="64"/>
+        <field name="uploadedAt" type="datetime_immutable" column="uploaded_at"/>
+
+        <embedded name="size"
+                  class="App\Domain\File\ValueObject\FileSize"
+                  use-column-prefix="false"/>
+    </entity>
+
+</doctrine-mapping>

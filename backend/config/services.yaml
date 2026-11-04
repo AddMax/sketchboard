@@ -30,6 +30,7 @@ services:
             - '../src/Application/**/Command/**/*Command.php'
             - '../src/Application/**/Query/**/*Query.php'
             - '../src/Application/Shared/Port/RealtimeCredentials.php'
+            - '../src/Application/Shared/Port/StorageUnavailable.php'
 
     App\Infrastructure\:
         resource: '../src/Infrastructure/'
@@ -40,6 +41,9 @@ services:
     # Порты домена и приложения → их единственные реализации
     App\Domain\Note\NoteRepository: '@App\Infrastructure\Persistence\Doctrine\DoctrineNoteRepository'
     App\Domain\Drawing\DrawingRepository: '@App\Infrastructure\Persistence\Doctrine\DoctrineDrawingRepository'
+    App\Domain\File\FileRepository: '@App\Infrastructure\Persistence\Doctrine\DoctrineFileRepository'
+    # FileStorage получит реализацию на S3 вместе с HTTP-слоем файлов;
+    # до тех пор его хендлеры контейнер не собирает — их никто не вызывает
     App\Application\Shared\Port\DomainEventPublisher: '@App\Infrastructure\Realtime\Centrifugo\CentrifugoEventPublisher'
     App\Application\Shared\Port\RealtimeAccess: '@App\Infrastructure\Realtime\Centrifugo\CentrifugoRealtimeAccess'
 

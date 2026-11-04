@@ -16,7 +16,7 @@ Garage 2 (S3-хранилище файлов), всё за nginx в Docker.
 make init                  # первый запуск: .env, секреты, сборка, старт, миграции
 make up / down / destroy   # destroy сносит и данные
 make logs                  # логи всех сервисов
-make test                  # тесты: 41 на бэке, 31 на фронте (test-back / test-front — по отдельности)
+make test                  # тесты: 79 на бэке, 31 на фронте (test-back / test-front — по отдельности)
 make health                # /api/health: статусы PostgreSQL, Redis, Centrifugo и Garage
 make garage c="bucket list"    # CLI Garage в контейнере; без c — статус узла
 make schema-validate       # сверить XML-маппинг Doctrine со схемой БД
@@ -68,11 +68,13 @@ UI → Application → Domain, а Infrastructure подключается к Dom
 - Инварианты стерегут объекты-значения (`NoteText`, `Position`, `Color`, `Author`),
   а не валидатор: `symfony/validator` намеренно не установлен. VO бросают
   `Domain\Shared\InvalidArgument`, а `DomainExceptionListener` превращает его в 422,
-  `NoteNotFound` — в 404. Контроллеры не ловят исключения сами.
+  `NoteNotFound` и `FileNotFound` — в 404, `FileAccessDenied` — в 403.
+  Контроллеры не ловят исключения сами.
 - Агрегат копит события (`recordThat`) и отдаёт их через `releaseEvents()`.
   Публикует их **хендлер после успешной записи**, не репозиторий и не контроллер.
   В `DeleteNoteHandler` события снимаются до `remove()` — после удаления объект уже не наш.
-- Агрегатов два: `Note` и `Drawing` (рисунок заметки, ключ общий с заметкой).
+- Агрегатов три: `Note`, `Drawing` (рисунок заметки, ключ общий с заметкой)
+  и `StoredFile` (загруженный файл, см. ниже).
   Рисунок — сцена Excalidraw: `Elements` из `Element` в порядке наложения.
   `Element` хранит объект редактора **как есть** (`toArray()` возвращает то,
   что пришло) и проверяет только `id` (строка ≤ 64), `type` (строчные
@@ -89,12 +91,27 @@ UI → Application → Domain, а Infrastructure подключается к Dom
   формата (штрихи `line` и фигуры `shape` своего полотна) переведены
   миграцией `Version20261014120000` в `freedraw`, `rectangle`, `ellipse` и
   замкнутую `line` (треугольник); обратного пути нет.
+- `StoredFile` (`Domain/File/`) — метаданные файла: `OriginalName` (только
+  basename, ≤ 255, без управляющих символов), `MimeType` (закрытый список:
+  картинки, PDF, `text/plain`; расширение для ключа берётся из него, а не
+  из имени), `FileSize` (≤ 10 МБ, считается по содержимому, а не по заявке
+  клиента), `Visibility` (enum `public` | `private`), владелец — тот же
+  `Author`, что у заметки. Ключ в хранилище агрегат вычисляет сам
+  (`storageKey()`: бакет по видимости, путь `гггг/мм/<id>.<ext>`) и в базе
+  его нет. Правила доступа — методы `canBeReadBy()` (публичный — всем,
+  приватный — владельцу) и `isOwnedBy()` (удалять может только владелец).
+  Байты ходят через порт `Application/Shared/Port/FileStorage` строкой:
+  предел размера много меньше `memory_limit`. Хендлер загрузки пишет
+  сначала байты, потом запись, и при сбое записи убирает объект; удаление —
+  наоборот, сначала запись: объект-сирота безобиден, запись без объекта —
+  нет. Событий файл не порождает.
 - Маппинг Doctrine — XML в `Infrastructure/Persistence/Doctrine/Mapping/`.
   Имя файла кодирует FQCN относительно префикса `App\Domain`:
   `App\Domain\Note\Note` → `Note.Note.orm.xml`, embeddable `Position` →
   `Note.ValueObject.Position.orm.xml`. Ошибиться легко, симптом —
-  «Class 'App\Domain\Note' does not exist». Таблиц две: `notes` и `drawings`,
-  без внешнего ключа между ними.
+  «Class 'App\Domain\Note' does not exist». Таблиц три: `notes`, `drawings`
+  и `files`, без внешних ключей между ними. Enum PHP (`Visibility`) маппится
+  атрибутом `enum-type` на поле `string`, отдельный тип DBAL не нужен.
 - Документация API — атрибуты `OpenApi\Attributes` (`OA\Get`, `OA\RequestBody`,
   `OA\Response`…) на `__invoke` контроллера, тег `OA\Tag` на классе. Путь и метод
   Nelmio берёт из `#[Route]`, дублировать не нужно. Переиспользуемые схемы
@@ -227,8 +244,11 @@ Garage — S3-совместимое хранилище в compose (`docker/gara
 - Официальный образ собран from scratch, без shell и wget. Поэтому
   `docker/garage/Dockerfile` переносит бинарник в alpine — иначе ни
   healthcheck, ни bootstrap не выполнить.
-- Порт `FileStorage`, агрегат файла и маршруты `/api/files` ещё не написаны:
-  хранилище поднято под них.
+- Домен файла, порт `FileStorage` и сценарии (`Application/File/`: загрузка,
+  удаление, метаданные, скачивание) написаны и покрыты тестами с адаптерами
+  в памяти (`tests/Unit/Application/File/`). Реализации порта на S3 и
+  маршрутов `/api/files` ещё нет, поэтому хендлеры файла контейнер пока не
+  собирает — Symfony откладывает ошибку автовайринга до первого обращения.
 
 ## Ловушки окружения
 
@@ -338,5 +358,5 @@ Excalidraw тестами не покрыты; рисунок не синхро�
 в realtime — каждый видит его при открытии страницы, а побеждает последнее
 сохранение (элементы Excalidraw несут `version` и `versionNonce`, а пакет
 экспортирует `reconcileElements` — задел на будущее); картинки в рисунке не
-поддерживаются — их файлы живут вне сцены; хранилище файлов (Garage)
-поднято, но бэкенд в него ещё не пишет — нет порта, агрегата и API.
+поддерживаются — их файлы живут вне сцены; у файлов есть домен, порт
+`FileStorage` и сценарии, но нет S3-адаптера и маршрутов `/api/files`.
