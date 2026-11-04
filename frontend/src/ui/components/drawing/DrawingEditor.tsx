@@ -1,10 +1,10 @@
 import { Excalidraw, getSceneVersion } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
 import type { ExcalidrawElement, OrderedExcalidrawElement } from '@excalidraw/excalidraw/element/types'
-import type { ExcalidrawInitialDataState, ExcalidrawProps } from '@excalidraw/excalidraw/types'
+import type { BinaryFiles, ExcalidrawInitialDataState, ExcalidrawProps } from '@excalidraw/excalidraw/types'
 import { observer } from 'mobx-react-lite'
 import { useMemo, useRef } from 'react'
-import type { DrawingElement } from '../../../domain/drawing/Drawing'
+import type { DrawingElement, DrawingImage } from '../../../domain/drawing/Drawing'
 import { liveElements } from '../../../domain/drawing/Drawing'
 import { useColorScheme } from '../../colorScheme'
 import { SaveStatus } from './SaveStatus'
@@ -13,13 +13,15 @@ import type { Savable } from './SaveStatus'
 /** Что редактору нужно от документа — этому интерфейсу соответствует DrawingStore. */
 export interface EditorDocument extends Savable {
   readonly elements: readonly DrawingElement[]
+  readonly images: Readonly<Record<string, DrawingImage>>
   replaceElements(next: DrawingElement[]): void
+  /** Файл вставляемой картинки → идентификатор, который станет её `fileId`. */
+  storeImage(image: File): Promise<string>
 }
 
 /**
  * Сцену не загружают из файла и не сохраняют в него — она живёт на сервере;
- * тема следует за системной; картинки выключены, потому что их файлы
- * хранятся отдельно от сцены, а сервер файлы не принимает.
+ * тема следует за системной.
  */
 const UI_OPTIONS: ExcalidrawProps['UIOptions'] = {
   canvasActions: {
@@ -28,7 +30,17 @@ const UI_OPTIONS: ExcalidrawProps['UIOptions'] = {
     toggleTheme: false,
     changeViewBackgroundColor: false,
   },
-  tools: { image: false },
+}
+
+/** Картинки сцены в форме, которой ждёт редактор: словарь по fileId. */
+function sceneFiles(images: Readonly<Record<string, DrawingImage>>): BinaryFiles {
+  const files: Record<string, { id: string; mimeType: string; dataURL: string; created: number }> = {}
+
+  for (const image of Object.values(images)) {
+    files[image.id] = { id: image.id, mimeType: image.mimeType, dataURL: image.dataUrl, created: 0 }
+  }
+
+  return files as unknown as BinaryFiles
 }
 
 /**
@@ -50,6 +62,7 @@ export const DrawingEditor = observer(function DrawingEditor({
     () => ({
       // Наш тип описывает лишь поля, общие с сервером; полную форму знает редактор
       elements: drawing.elements as unknown as ExcalidrawElement[],
+      files: sceneFiles(drawing.images),
       scrollToContent: true,
     }),
     [],
@@ -77,6 +90,8 @@ export const DrawingEditor = observer(function DrawingEditor({
         langCode="ru-RU"
         name={name}
         UIOptions={UI_OPTIONS}
+        // Файл уходит в хранилище в момент вставки и возвращает fileId элемента
+        generateIdForFile={drawing.storeImage}
         renderTopRightUI={() => <SaveStatus document={drawing} />}
       />
     </div>

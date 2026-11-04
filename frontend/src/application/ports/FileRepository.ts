@@ -9,6 +9,8 @@ export interface FileRepository {
   upload(data: Blob, draft: FileDraft): Promise<StoredFile>
   get(id: string, requester: string): Promise<StoredFile>
   remove(id: string, requester: string): Promise<void>
+  /** Байты файла с его типом; для приватного — от имени участника. */
+  download(id: string, requester: string): Promise<Blob>
   /** Адрес содержимого через API — единственный путь к приватному файлу. */
   contentUrl(id: string, requester: string): string
 }

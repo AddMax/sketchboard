@@ -18,6 +18,17 @@ export async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T
   return response.status === 204 ? (undefined as T) : ((await response.json()) as T)
 }
 
+/** Тот же вызов, но ответ — байты: ошибки сервер и здесь описывает JSON-ом. */
+export async function blobRequest(url: string): Promise<Blob> {
+  const response = await fetch(url)
+
+  if (!response.ok) {
+    throw await toError(response)
+  }
+
+  return response.blob()
+}
+
 async function toError(response: Response): Promise<Error> {
   const body: unknown = await response.json().catch(() => null)
 

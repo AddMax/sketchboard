@@ -54,21 +54,23 @@ when@dev:
                     DrawingElement:
                         type: object
                         description: >-
-                            Элемент сцены Excalidraw (rectangle, ellipse, diamond, line, arrow, freedraw, text, frame…)
+                            Элемент сцены Excalidraw (rectangle, ellipse, diamond, line, arrow, freedraw, text, image, frame…)
                             в формате самого редактора. Сервер хранит его как есть и проверяет только
-                            идентификатор, тип, размер и отсутствие признака удаления. Картинки (`image`)
-                            не принимаются: их файлы хранятся вне сцены.
+                            идентификатор, тип, размер и отсутствие признака удаления. Картинка (`image`)
+                            ссылается полем `fileId` на файл из `POST /api/files`; вместе с заметкой
+                            удаляются и файлы её рисунка.
                         required: [id, type]
                         additionalProperties: true
                         properties:
                             id: { type: string, maxLength: 64, example: 7d1e0c7a2f3e4f0b9c1a }
-                            type: { type: string, pattern: '^[a-z]{1,32}$', example: freedraw, description: 'Любой тип элемента Excalidraw, кроме image' }
+                            type: { type: string, pattern: '^[a-z]{1,32}$', example: freedraw, description: 'Любой тип элемента Excalidraw' }
                             isDeleted: { type: boolean, enum: [false], description: 'Удалённые элементы клиент отбрасывает до отправки' }
                             points:
                                 type: array
                                 maxItems: 20000
                                 description: Точки штриха или ломаной относительно x, y элемента
                                 items: { type: array, items: { type: number, format: double }, minItems: 2, maxItems: 2 }
+                            fileId: { type: string, format: uuid, nullable: true, description: 'Только у image: идентификатор загруженного файла' }
                             version: { type: integer, example: 3, description: 'Счётчик правок элемента, ведёт Excalidraw' }
                     Drawing:
                         type: object

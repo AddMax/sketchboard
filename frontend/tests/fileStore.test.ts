@@ -30,6 +30,10 @@ class InMemoryFiles implements FileRepository {
     this.removed.push({ id, requester })
   }
 
+  async download(): Promise<Blob> {
+    return new Blob()
+  }
+
   contentUrl(id: string, requester: string): string {
     return `/api/files/${id}/content?requester=${requester}`
   }

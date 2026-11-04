@@ -64,6 +64,27 @@ final readonly class Elements implements \Countable
         return count($this->elements);
     }
 
+    /**
+     * Файлы, на которые ссылаются картинки сцены, без повторов: одна
+     * картинка может стоять на полотне несколько раз.
+     *
+     * @return list<string>
+     */
+    public function fileIds(): array
+    {
+        $ids = [];
+
+        foreach ($this->elements as $element) {
+            $fileId = $element->fileId();
+
+            if (null !== $fileId) {
+                $ids[$fileId] = true;
+            }
+        }
+
+        return array_keys($ids);
+    }
+
     public function equals(self $other): bool
     {
         return $this->toArray() === $other->toArray();

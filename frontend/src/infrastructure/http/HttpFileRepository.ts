@@ -1,6 +1,6 @@
 import type { FileRepository } from '../../application/ports/FileRepository'
 import type { FileDraft, StoredFile } from '../../domain/file/StoredFile'
-import { jsonRequest } from './jsonRequest'
+import { blobRequest, jsonRequest } from './jsonRequest'
 
 /** Адаптер порта файлов: multipart на загрузку, JSON на остальное. */
 export class HttpFileRepository implements FileRepository {
@@ -23,6 +23,10 @@ export class HttpFileRepository implements FileRepository {
 
   async remove(id: string, requester: string): Promise<void> {
     await jsonRequest<void>(this.url(id, '', requester), { method: 'DELETE' })
+  }
+
+  download(id: string, requester: string): Promise<Blob> {
+    return blobRequest(this.contentUrl(id, requester))
   }
 
   contentUrl(id: string, requester: string): string {

@@ -13,14 +13,15 @@ import { FileStore } from './file/FileStore'
 export interface Stores {
   readonly board: BoardStore
   readonly files: FileStore
-  openDrawing(noteId: string): DrawingStore
+  /** Стор рисунка заметки; участник нужен ему, чтобы подписывать картинки. */
+  openDrawing(noteId: string, participant: string): DrawingStore
 }
 
 export function createStores({ notes, drawings, files, realtime }: Dependencies): Stores {
   return {
     board: new BoardStore(notes, realtime),
     files: new FileStore(files),
-    openDrawing: (noteId) => new DrawingStore(noteId, drawings),
+    openDrawing: (noteId, participant) => new DrawingStore(noteId, drawings, files, participant),
   }
 }
 
