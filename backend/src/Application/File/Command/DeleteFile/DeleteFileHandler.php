@@ -24,7 +24,7 @@ final readonly class DeleteFileHandler
         $requester = null !== $command->requester ? Author::fromString($command->requester) : Author::anonymous();
 
         if (!$file->isOwnedBy($requester)) {
-            throw FileAccessDenied::toFile($file->id());
+            throw FileAccessDenied::toDeleteFile($file->id());
         }
 
         // Сначала запись, потом байты: объект без записи — безобидный сирота,

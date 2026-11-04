@@ -16,7 +16,7 @@ Garage 2 (S3-хранилище файлов), всё за nginx в Docker.
 make init                  # первый запуск: .env, секреты, сборка, старт, миграции
 make up / down / destroy   # destroy сносит и данные
 make logs                  # логи всех сервисов
-make test                  # тесты: 79 на бэке, 31 на фронте (test-back / test-front — по отдельности)
+make test                  # тесты: 87 на бэке, 31 на фронте (test-back / test-front — по отдельности)
 make health                # /api/health: статусы PostgreSQL, Redis, Centrifugo и Garage
 make garage c="bucket list"    # CLI Garage в контейнере; без c — статус узла
 make schema-validate       # сверить XML-маппинг Doctrine со схемой БД
@@ -63,12 +63,13 @@ UI → Application → Domain, а Infrastructure подключается к Dom
 | `Domain/` | чистый PHP. Ни `use Symfony\…`, ни `use Doctrine\…`, ни атрибутов ORM |
 | `Application/` | сценарии «команда + хендлер», порты, read-модели |
 | `Infrastructure/` | единственное место, где живут Doctrine, Centrifugo, HTTP-клиент |
-| `UI/` | разобрать запрос → вызвать хендлер → отдать JSON. **Один маршрут — один класс** с `__invoke`, каталоги по контексту: `Controller/Note/`, `Controller/Drawing/`, `Controller/Realtime/`. Тело запроса читает `Http/JsonPayload` (`string`, `int`, `list`…) без проверок — что внутри, решает домен |
+| `UI/` | разобрать запрос → вызвать хендлер → отдать JSON. **Один маршрут — один класс** с `__invoke`, каталоги по контексту: `Controller/Note/`, `Controller/Drawing/`, `Controller/File/`, `Controller/Realtime/`. Тело запроса читает `Http/JsonPayload` (`string`, `int`, `list`…) без проверок — что внутри, решает домен; multipart-файл — `Http/UploadedFilePayload` (тип по содержимому через `symfony/mime`, а не по заявке клиента) |
 
 - Инварианты стерегут объекты-значения (`NoteText`, `Position`, `Color`, `Author`),
   а не валидатор: `symfony/validator` намеренно не установлен. VO бросают
   `Domain\Shared\InvalidArgument`, а `DomainExceptionListener` превращает его в 422,
-  `NoteNotFound` и `FileNotFound` — в 404, `FileAccessDenied` — в 403.
+  `NoteNotFound` и `FileNotFound` — в 404, `FileAccessDenied` — в 403,
+  `StorageUnavailable` (порт хранилища) — в 503 без подробностей в ответе.
   Контроллеры не ловят исключения сами.
 - Агрегат копит события (`recordThat`) и отдаёт их через `releaseEvents()`.
   Публикует их **хендлер после успешной записи**, не репозиторий и не контроллер.
@@ -244,11 +245,24 @@ Garage — S3-совместимое хранилище в compose (`docker/gara
 - Официальный образ собран from scratch, без shell и wget. Поэтому
   `docker/garage/Dockerfile` переносит бинарник в alpine — иначе ни
   healthcheck, ни bootstrap не выполнить.
-- Домен файла, порт `FileStorage` и сценарии (`Application/File/`: загрузка,
-  удаление, метаданные, скачивание) написаны и покрыты тестами с адаптерами
-  в памяти (`tests/Unit/Application/File/`). Реализации порта на S3 и
-  маршрутов `/api/files` ещё нет, поэтому хендлеры файла контейнер пока не
-  собирает — Symfony откладывает ошибку автовайринга до первого обращения.
+- Порт `FileStorage` реализует `Infrastructure/Storage/Flysystem/FlysystemFileStorage`:
+  два хранилища `public.storage` и `private.storage` из
+  `config/packages/flysystem.yaml` (league/flysystem-bundle, адаптер
+  AsyncAws S3), клиент `app.s3_client` — в `services.yaml` с
+  `pathStyleEndpoint: 'true'` (внутри compose хост один, `garage`) и
+  `sendChunkedBody: 'false'`. Опции клиента — строки: `Configuration`
+  AsyncAws приводит всё к строкам сама. Content-Type объекту задаёт адаптер
+  из `MimeType` — по нему web-endpoint отдаёт публичный файл. Ссылка `url`
+  публичного файла — `/files/<путь>` (параметр `app.public_files_base_url`).
+  Маршруты `/api/files` (`Controller/File/`): загрузка multipart (`file`,
+  `visibility`, `owner`), метаданные, содержимое, удаление; кто спрашивает —
+  query-параметр `requester`. Содержимое отдаётся с
+  `Content-Security-Policy: sandbox` и `nosniff`: SVG и PDF от пользователя
+  не должны выполняться в origin приложения. Адаптер проверяется тестом на
+  `league/flysystem-memory` (`tests/Unit/Infrastructure/Storage/`), сценарии —
+  с адаптерами в памяти (`tests/Unit/Application/File/`).
+- **`UploadedFile::getMimeType()` требует `symfony/mime`**, иначе 500
+  «You cannot guess the mime type». Пакет стоит в `require`, не в dev.
 
 ## Ловушки окружения
 
@@ -358,5 +372,6 @@ Excalidraw тестами не покрыты; рисунок не синхро�
 в realtime — каждый видит его при открытии страницы, а побеждает последнее
 сохранение (элементы Excalidraw несут `version` и `versionNonce`, а пакет
 экспортирует `reconcileElements` — задел на будущее); картинки в рисунке не
-поддерживаются — их файлы живут вне сцены; у файлов есть домен, порт
-`FileStorage` и сценарии, но нет S3-адаптера и маршрутов `/api/files`.
+поддерживаются — их файлы живут вне сцены, а `/api/files` фронтенд ещё не
+вызывает; presigned URL и прямой загрузки из браузера в Garage нет — байты
+идут через php; осиротевшие объекты в бакетах никто не чистит.

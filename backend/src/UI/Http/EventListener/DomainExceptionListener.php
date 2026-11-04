@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\UI\Http\EventListener;
 
+use App\Application\Shared\Port\StorageUnavailable;
 use App\Domain\File\Exception\FileAccessDenied;
 use App\Domain\File\Exception\FileNotFound;
 use App\Domain\Note\Exception\NoteNotFound;
@@ -41,6 +42,11 @@ final readonly class DomainExceptionListener
             $exception instanceof InvalidArgument => new JsonResponse(
                 ['errors' => [($exception->field() ?: 'request') => $exception->getMessage()]],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
+            ),
+            // Подробности остаются в логе: в ответе ни ключей, ни имён бакетов
+            $exception instanceof StorageUnavailable => new JsonResponse(
+                ['error' => 'Хранилище файлов недоступно'],
+                Response::HTTP_SERVICE_UNAVAILABLE,
             ),
             default => null,
         };
